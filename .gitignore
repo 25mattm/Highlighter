@@ -1,0 +1,12 @@
+.DS_Store
+
+# macOS app output
+HighlightBar/.build/
+HighlightBar/.cache/
+HighlightBar/.swiftpm/
+HighlightBar/dist/
+
+# Windows app output
+WindowsHighlightBar/bin/
+WindowsHighlightBar/obj/
+WindowsHighlightBar/publish/
