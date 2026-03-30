@@ -20,6 +20,7 @@ This repo contains:
 
 - Windows: from the artifact in **Build Windows App** or from GitHub Releases (`HighlightBar-windows-x64.zip`).
 - macOS: from the artifact in **Build macOS App** or from GitHub Releases (`HighlightBar-macos.zip`).
+- Full usage guide: `USER_GUIDE.md`
 
 ## GitHub Setup (Recommended)
 
