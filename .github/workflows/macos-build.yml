@@ -1,0 +1,40 @@
+name: Build macOS App
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "HighlightBar/**"
+      - ".github/workflows/macos-build.yml"
+  pull_request:
+    paths:
+      - "HighlightBar/**"
+      - ".github/workflows/macos-build.yml"
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build app bundle
+        run: ./HighlightBar/scripts/build-app.sh
+
+      - name: Zip app bundle
+        run: |
+          mkdir -p artifacts
+          ditto -c -k --sequesterRsrc --keepParent "HighlightBar/dist/HighlightBar.app" "artifacts/HighlightBar-macos.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: HighlightBar-macos
+          path: artifacts/HighlightBar-macos.zip

@@ -16,6 +16,11 @@ This repo contains:
   - color
 - Remembers last-used settings
 
+## Downloads For Friends
+
+- Windows: from the artifact in **Build Windows App** or from GitHub Releases (`HighlightBar-windows-x64.zip`).
+- macOS: from the artifact in **Build macOS App** or from GitHub Releases (`HighlightBar-macos.zip`).
+
 ## GitHub Setup (Recommended)
 
 1. Create a new **public** GitHub repository (web UI).
@@ -30,14 +35,18 @@ git push -u origin main
 
 3. Open your repo on GitHub and go to `Actions`.
 4. Run **Build Windows App** (or push to `main`) to produce a downloadable Windows zip artifact.
-5. To create a public Release download, tag and push:
+5. Run **Build macOS App** (or push to `main`) to produce a downloadable macOS zip artifact.
+6. To create public Release downloads, tag and push:
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-That triggers **Release Windows App** and uploads `HighlightBar-windows-x64.zip` to GitHub Releases.
+That triggers:
+
+- **Release Windows App** -> `HighlightBar-windows-x64.zip`
+- **Release macOS App** -> `HighlightBar-macos.zip`
 
 ## Local Windows Build (on a Windows machine)
 
