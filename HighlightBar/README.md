@@ -5,7 +5,7 @@ A macOS click-through highlight bar that follows the mouse and stays on top of a
 ## Run
 
 ```bash
-cd /Users/matthewmullett/Documents/New\ project/HighlightBar
+cd HighlightBar
 swift run
 ```
 
@@ -17,7 +17,7 @@ Use the menu bar item (`HB`) to configure it or quit.
 Create a double-clickable app bundle:
 
 ```bash
-cd /Users/matthewmullett/Documents/New\ project/HighlightBar
+cd HighlightBar
 ./scripts/build-app.sh
 ```
 
@@ -28,7 +28,7 @@ This generates:
 Open it:
 
 ```bash
-open "/Users/matthewmullett/Documents/New project/HighlightBar/dist/HighlightBar.app"
+open "dist/HighlightBar.app"
 ```
 
 ## Menu Controls
