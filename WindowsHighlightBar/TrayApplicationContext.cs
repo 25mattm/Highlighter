@@ -22,8 +22,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly AppSettings _settings;
     private readonly ToolStripMenuItem _fontLabelItem = new() { Enabled = false };
     private readonly ToolStripMenuItem _opacityLabelItem = new() { Enabled = false };
+    private readonly ToolStripMenuItem _visibilityItem = new("Hide Bar (Ctrl+Shift+H)");
 
     private string? _previewColorName;
+    private bool _barHidden;
 
     public TrayApplicationContext()
     {
@@ -31,6 +33,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         NormalizeSettings();
 
         _overlay = new OverlayForm();
+        _overlay.ToggleRequested += (_, _) => ToggleVisibility();
         ApplySettingsToOverlay();
         _overlay.Show();
 
@@ -48,7 +51,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         UpdateColorChecks();
 
         _followTimer = new System.Windows.Forms.Timer { Interval = 16 };
-        _followTimer.Tick += (_, _) => _overlay.FollowCursor(Cursor.Position);
+        _followTimer.Tick += (_, _) =>
+        {
+            if (!_barHidden)
+            {
+                _overlay.FollowCursor(Cursor.Position);
+            }
+        };
         _followTimer.Start();
     }
 
@@ -78,6 +87,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             colorHeader.DropDownItems.Add(item);
         }
 
+        _visibilityItem.Click += (_, _) => ToggleVisibility();
+
         var quitItem = new ToolStripMenuItem("Quit Highlight Bar", null, (_, _) => ExitApp());
 
         menu.Items.Add(decreaseFontItem);
@@ -87,6 +98,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(increaseOpacityItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(colorHeader);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_visibilityItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(quitItem);
 
@@ -194,6 +207,22 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void SaveSettings()
     {
         SettingsStore.Save(_settings);
+    }
+
+    private void ToggleVisibility()
+    {
+        _barHidden = !_barHidden;
+        if (_barHidden)
+        {
+            _overlay.Hide();
+        }
+        else
+        {
+            _overlay.Show();
+            _overlay.FollowCursor(Cursor.Position);
+        }
+
+        _visibilityItem.Text = _barHidden ? "Show Bar (Ctrl+Shift+H)" : "Hide Bar (Ctrl+Shift+H)";
     }
 
     private void ExitApp()

@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace HighlightBar.Windows;
@@ -7,6 +8,23 @@ namespace HighlightBar.Windows;
 internal sealed class OverlayForm : Form
 {
     private const int CornerRadius = 10;
+
+    // System-wide Ctrl+Shift+H shortcut to show/hide the bar. RegisterHotKey
+    // needs no special permission and posts WM_HOTKEY to this window.
+    private const int ToggleHotKeyId = 1;
+    private const int WmHotKey = 0x0312;
+    private const uint ModControl = 0x0002;
+    private const uint ModShift = 0x0004;
+    private const uint ModNoRepeat = 0x4000;
+    private const uint VkH = 0x48;
+
+    [DllImport("user32.dll")]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    public event EventHandler? ToggleRequested;
 
     private int _barHeight = 44;
     private Color _barColor = Color.Gold;
@@ -67,6 +85,29 @@ internal sealed class OverlayForm : Form
         {
             Bounds = newBounds;
         }
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        RegisterHotKey(Handle, ToggleHotKeyId, ModControl | ModShift | ModNoRepeat, VkH);
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        UnregisterHotKey(Handle, ToggleHotKeyId);
+        base.OnHandleDestroyed(e);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WmHotKey && m.WParam.ToInt32() == ToggleHotKeyId)
+        {
+            ToggleRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        base.WndProc(ref m);
     }
 
     protected override void OnResize(EventArgs e)
