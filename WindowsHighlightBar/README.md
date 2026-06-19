@@ -18,8 +18,9 @@ dotnet publish .\HighlightBar.Windows.csproj -c Release -r win-x64 --self-contai
 
 - Tray icon -> context menu
 - Font reference size: `10` to `100`
-- Transparency: `10%` to `90%`
+- Opacity: `10%` (most transparent) to `90%` (most solid)
 - Color selection + hover preview
+- Rounded, outlined bar matching the macOS app
 
 Settings persist to:
 
