@@ -10,3 +10,6 @@ HighlightBar/dist/
 WindowsHighlightBar/bin/
 WindowsHighlightBar/obj/
 WindowsHighlightBar/publish/
+
+# JetBrains IDE
+.idea/
