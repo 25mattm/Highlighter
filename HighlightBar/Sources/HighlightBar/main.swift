@@ -196,8 +196,9 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fontReferenceSize
         )
         transparencyInfoItem?.title = String(
-            format: "Transparency: %.0f%%",
-            barOpacity * 100
+            format: "Opacity: %.0f%% (%.0f%% transparent)",
+            barOpacity * 100,
+            100 - barOpacity * 100
         )
         fontSlider?.doubleValue = Double(fontReferenceSize)
         opacitySlider?.doubleValue = Double(barOpacity * 100)
