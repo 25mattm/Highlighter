@@ -1,10 +1,13 @@
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace HighlightBar.Windows;
 
 internal sealed class OverlayForm : Form
 {
+    private const int CornerRadius = 10;
+
     private int _barHeight = 44;
     private Color _barColor = Color.Gold;
     private int _opacityPercent = 35;
@@ -15,6 +18,8 @@ internal sealed class OverlayForm : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         TopMost = true;
+        DoubleBuffered = true;
+        ResizeRedraw = true;
         BackColor = _barColor;
         Opacity = _opacityPercent / 100.0;
     }
@@ -47,6 +52,7 @@ internal sealed class OverlayForm : Form
         _opacityPercent = Math.Clamp(opacityPercent, 10, 90);
         BackColor = _barColor;
         Opacity = _opacityPercent / 100.0;
+        Invalidate();
     }
 
     public void FollowCursor(Point cursorPosition)
@@ -61,5 +67,66 @@ internal sealed class OverlayForm : Form
         {
             Bounds = newBounds;
         }
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        UpdateRegion();
+    }
+
+    private void UpdateRegion()
+    {
+        using var path = RoundedRectPath(ClientRectangle, CornerRadius);
+        Region = new Region(path);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+        // The whole form shares one opacity, so the border is drawn in a darker
+        // shade of the bar color to give the rounded outline visible definition
+        // (mirrors the higher-opacity border on the macOS app).
+        var borderColor = DarkenColor(_barColor, 0.35);
+        var borderRect = new Rectangle(0, 0, Width - 1, Height - 1);
+        using var path = RoundedRectPath(borderRect, CornerRadius);
+        using var pen = new Pen(borderColor, 1.5f);
+        e.Graphics.DrawPath(pen, path);
+    }
+
+    private static GraphicsPath RoundedRectPath(Rectangle rect, int radius)
+    {
+        var diameter = Math.Min(radius * 2, Math.Min(rect.Width, rect.Height));
+        var path = new GraphicsPath();
+
+        if (diameter <= 0)
+        {
+            path.AddRectangle(rect);
+            path.CloseFigure();
+            return path;
+        }
+
+        var arc = new Rectangle(rect.Location, new Size(diameter, diameter));
+        path.AddArc(arc, 180, 90);
+        arc.X = rect.Right - diameter;
+        path.AddArc(arc, 270, 90);
+        arc.Y = rect.Bottom - diameter;
+        path.AddArc(arc, 0, 90);
+        arc.X = rect.Left;
+        path.AddArc(arc, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+
+    private static Color DarkenColor(Color color, double amount)
+    {
+        var factor = 1.0 - Math.Clamp(amount, 0.0, 1.0);
+        return Color.FromArgb(
+            color.A,
+            (int)(color.R * factor),
+            (int)(color.G * factor),
+            (int)(color.B * factor));
     }
 }

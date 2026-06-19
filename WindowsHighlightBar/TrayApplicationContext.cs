@@ -64,8 +64,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var decreaseFontItem = new ToolStripMenuItem("Smaller Font Reference (-1)", null, (_, _) => ChangeFontReference(-1));
         var increaseFontItem = new ToolStripMenuItem("Larger Font Reference (+1)", null, (_, _) => ChangeFontReference(1));
 
-        var decreaseOpacityItem = new ToolStripMenuItem("Lower Transparency (-5%)", null, (_, _) => ChangeOpacity(-5));
-        var increaseOpacityItem = new ToolStripMenuItem("Higher Transparency (+5%)", null, (_, _) => ChangeOpacity(5));
+        var decreaseOpacityItem = new ToolStripMenuItem("More Transparent (-5%)", null, (_, _) => ChangeOpacity(-5));
+        var increaseOpacityItem = new ToolStripMenuItem("More Solid (+5%)", null, (_, _) => ChangeOpacity(5));
 
         var colorHeader = new ToolStripMenuItem("Color");
         foreach (var colorName in _colors.Keys)
@@ -104,7 +104,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void UpdateMenuLabels()
     {
         _fontLabelItem.Text = $"Height: {_settings.FontReferenceSize * 2}px ({_settings.FontReferenceSize}pt reference)";
-        _opacityLabelItem.Text = $"Transparency: {_settings.OpacityPercent}%";
+        _opacityLabelItem.Text = $"Opacity: {_settings.OpacityPercent}% ({100 - _settings.OpacityPercent}% transparent)";
     }
 
     private void UpdateColorChecks()
