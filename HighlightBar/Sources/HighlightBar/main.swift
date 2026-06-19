@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static var retainedDelegate: HighlightBarApp?
@@ -18,6 +19,9 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var colorPickerView: ColorPickerMenuView?
     private var heightInfoItem: NSMenuItem?
     private var transparencyInfoItem: NSMenuItem?
+    private var visibilityMenuItem: NSMenuItem?
+    private var hotKeyRef: EventHotKeyRef?
+    private var isBarHidden = false
     private var previewColorName: String?
 
     private var barHeight: CGFloat = 44
@@ -54,10 +58,14 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyAppearance()
         updateMenuState()
         startTracking()
+        registerGlobalHotKey()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+        }
     }
 
     private func setupStatusItem() {
@@ -119,6 +127,17 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         colorPickerItem.view = colorPickerView
         menu.addItem(colorPickerItem)
         self.colorPickerView = colorPickerView
+
+        menu.addItem(.separator())
+
+        let visibilityItem = NSMenuItem(
+            title: "Hide Bar (⇧⌘H)",
+            action: #selector(toggleBarVisibility),
+            keyEquivalent: ""
+        )
+        visibilityItem.target = self
+        menu.addItem(visibilityItem)
+        self.visibilityMenuItem = visibilityItem
 
         menu.addItem(.separator())
 
@@ -373,6 +392,56 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         clearColorPreview()
+    }
+
+    // Registers a system-wide ⇧⌘H shortcut to show/hide the bar. Carbon's
+    // RegisterEventHotKey is used because it does not require Accessibility or
+    // Input Monitoring permission, so the shortcut works without an extra prompt.
+    private func registerGlobalHotKey() {
+        let signature: OSType = 0x4842_4B31 // "HBK1"
+        let hotKeyID = EventHotKeyID(signature: signature, id: 1)
+        var eventSpec = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: OSType(kEventHotKeyPressed)
+        )
+
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, _, userData -> OSStatus in
+                guard let userData else { return OSStatus(eventNotHandledErr) }
+                let app = Unmanaged<HighlightBarApp>.fromOpaque(userData).takeUnretainedValue()
+                app.toggleBarVisibility()
+                return noErr
+            },
+            1,
+            &eventSpec,
+            Unmanaged.passUnretained(self).toOpaque(),
+            nil
+        )
+
+        RegisterEventHotKey(
+            UInt32(kVK_ANSI_H),
+            UInt32(cmdKey | shiftKey),
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+    }
+
+    @objc private func toggleBarVisibility() {
+        isBarHidden.toggle()
+        if isBarHidden {
+            window?.orderOut(nil)
+        } else {
+            window?.orderFrontRegardless()
+            updateBarPosition()
+        }
+        updateVisibilityMenuItem()
+    }
+
+    private func updateVisibilityMenuItem() {
+        visibilityMenuItem?.title = isBarHidden ? "Show Bar (⇧⌘H)" : "Hide Bar (⇧⌘H)"
     }
 
     @objc private func quit() {
