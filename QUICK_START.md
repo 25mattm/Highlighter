@@ -34,7 +34,8 @@ If SmartScreen appears: `More info -> Run anyway`.
 - height
 - transparency
 - color
-3. Quit from menu: `Quit Highlight Bar`
+3. Show/hide the bar: `Ctrl + Shift + H` (Windows) or `⌘ + Shift + H` (macOS).
+4. Quit from menu: `Quit Highlight Bar`
 
 ## Need More Help?
 

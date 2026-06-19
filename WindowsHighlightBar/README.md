@@ -21,6 +21,7 @@ dotnet publish .\HighlightBar.Windows.csproj -c Release -r win-x64 --self-contai
 - Opacity: `10%` (most transparent) to `90%` (most solid)
 - Color selection + hover preview
 - Rounded, outlined bar matching the macOS app
+- Global `Ctrl + Shift + H` shortcut to show/hide the bar
 
 Settings persist to:
 
