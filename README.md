@@ -7,6 +7,24 @@ apps share the same feature set:
 - `HighlightBar/` — macOS Swift menu-bar app
 - `WindowsHighlightBar/` — Windows C# WinForms app
 
+## Accessibility
+
+Highlight Bar is a digital reading guide. Many people who read more comfortably with
+a physical reading ruler or line guide — including readers with dyslexia, visual
+tracking difficulties, ADHD, or low vision — lose their place when moving between
+lines or across a wide screen. The bar gives a consistent, adjustable visual anchor
+that follows the cursor, while staying fully click-through so it never interrupts
+normal work.
+
+Accessibility-minded design choices:
+
+- **Click-through everywhere** — the overlay never blocks clicks, scrolling, or typing.
+- **Adjustable to the reader** — size, color, and opacity are tunable so the guide is
+  visible without obscuring text, and the last-used settings are remembered.
+- **Quick show/hide** — a global `Ctrl/⌘ + Shift + H` shortcut toggles the bar instantly,
+  so it is there when reading and gone when it would get in the way.
+- **No sign-in, no network, no data collection** — it is a purely local utility.
+
 ## Features
 
 Both platforms implement the same behaviour:
@@ -20,6 +38,7 @@ Both platforms implement the same behaviour:
 | Opacity / transparency control (`10%`–`90%`) | ✅ | ✅ |
 | Color selection with hover preview | ✅ | ✅ |
 | Rounded bar with outlined border | ✅ | ✅ |
+| Global show/hide shortcut (`Ctrl/⌘ + Shift + H`) | ✅ | ✅ |
 | Remembers last-used settings | ✅ (`UserDefaults`) | ✅ (`%APPDATA%\HighlightBar\settings.json`) |
 
 The control surface is platform-idiomatic: macOS uses in-menu sliders and a color

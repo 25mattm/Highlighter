@@ -54,7 +54,10 @@ If SmartScreen warns:
 - height (font-size reference)
 - transparency
 - color
-4. Quit from the same menu:
+4. Show or hide the bar at any time:
+- Press `Ctrl + Shift + H` (Windows) or `⌘ + Shift + H` (macOS).
+- Or use `Hide Bar` / `Show Bar` in the menu.
+5. Quit from the same menu:
 - macOS: `Quit Highlight Bar`
 - Windows: `Quit Highlight Bar`
 

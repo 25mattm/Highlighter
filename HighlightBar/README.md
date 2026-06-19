@@ -37,6 +37,7 @@ open "dist/HighlightBar.app"
   The app maps it to bar height with `height = 2 x font-size`.
 - Transparency slider: adjust fill alpha from `10%` to `90%` with `-` and `+` buttons.
 - Color circles: choose color directly in the main dropdown. Hover previews the color before you click.
+- Show/Hide: toggle the bar with the global `⌘ + Shift + H` shortcut or the `Hide Bar` / `Show Bar` menu item.
 - Settings persistence: height reference, transparency, and color are remembered and restored on next launch.
 
 ## Code
