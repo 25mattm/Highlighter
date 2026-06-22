@@ -1,11 +1,16 @@
 # Highlight Bar (macOS + Windows)
 
 A lightweight click-through reading bar that follows your mouse across screens and
-stays on top of every window, so you can track the line you are reading. Two native
-apps share the same feature set:
+stays on top of every window, so you can track the line you are reading.
 
 - `HighlightBar/` — macOS Swift menu-bar app
 - `WindowsHighlightBar/` — Windows C# WinForms app
+
+> **This pass is macOS-focused.** The macOS app has gained reading overlays, lock
+> mode, reading profiles, launch-at-login, and more (see the table below); the
+> Windows app still implements the shared baseline. The two apps **intentionally
+> drift** until a later Windows catch-up pass — tracked in
+> [`BACKLOG.md`](BACKLOG.md).
 
 ## Accessibility
 
@@ -27,22 +32,36 @@ Accessibility-minded design choices:
 
 ## Features
 
-Both platforms implement the same behaviour:
+### Shared baseline (both platforms)
 
 | Feature | macOS | Windows |
 | --- | --- | --- |
 | Always-on-top translucent bar | ✅ | ✅ |
-| Click-through (normal clicks pass through) | ✅ | ✅ |
+| Click-through (clicks, scrolling, typing pass through) | ✅ | ✅ |
 | Follows the mouse across multiple screens | ✅ | ✅ |
-| Font-size reference control (`10`–`100`, height = 2× reference) | ✅ | ✅ |
+| Size control (font-size reference `10`–`100`) | ✅ | ✅ |
 | Opacity / transparency control (`10%`–`90%`) | ✅ | ✅ |
 | Color selection with hover preview | ✅ | ✅ |
-| Rounded bar with outlined border | ✅ | ✅ |
 | Global show/hide shortcut (`Ctrl/⌘ + Shift + H`) | ✅ | ✅ |
 | Remembers last-used settings | ✅ (`UserDefaults`) | ✅ (`%APPDATA%\HighlightBar\settings.json`) |
 
-The control surface is platform-idiomatic: macOS uses in-menu sliders and a color
-swatch row; Windows uses tray context-menu items and a color submenu.
+### macOS additions (this pass)
+
+| Feature | macOS | Windows |
+| --- | --- | --- |
+| Live display-change re-clamp (resolution / plug-unplug) | ✅ | ⏳ later |
+| Lock / pin position + nudge (`⌘⇧L`, `⌘⇧↑/↓`) | ✅ | ⏳ later |
+| Spotlight overlay (dims all but a slot at the bar) | ✅ | ⏳ later |
+| Screen-tint overlay (uniform colored wash) | ✅ | ⏳ later |
+| Bar shape (ruler / line) + vertical column orientation | ✅ | ⏳ later |
+| Tracking source (mouse / scroll / keyboard) | ✅ | ⏳ later |
+| Profiles (Dyslexia, ADHD / Focus, Low vision + custom) | ✅ | ⏳ later |
+| Launch at login | ✅ | ⏳ later |
+| First-run onboarding + VoiceOver-aware accessibility | ✅ | ⏳ later |
+| Opt-in auto-update (Sparkle) | ✅ (scaffolded) | ⏳ later |
+
+The control surface is platform-idiomatic: macOS uses in-menu sliders, a color
+swatch row, and submenus; Windows uses tray context-menu items and a color submenu.
 
 ## Downloads for friends
 
@@ -62,6 +81,11 @@ git push origin v0.1.2
 
 That triggers **Release Windows App** → `HighlightBar-windows-x64.zip` and
 **Release macOS App** → `HighlightBar-macos.zip`.
+
+The macOS release is signed (Developer ID), notarized, stapled, and ships an
+opt-in Sparkle auto-updater. That requires a one-time setup of Apple and Sparkle
+credentials as GitHub secrets/variables — see [`RELEASE.md`](RELEASE.md) for the
+exact checklist.
 
 ## Building locally
 
