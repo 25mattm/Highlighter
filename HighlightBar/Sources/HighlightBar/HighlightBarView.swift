@@ -15,6 +15,8 @@ final class HighlightBarView: NSView {
         self.borderOpacity = borderOpacity
         super.init(frame: .zero)
         applyAppearance()
+        // Decorative: keep VoiceOver out of the reading guide itself.
+        setAccessibilityElement(false)
     }
 
     required init?(coder: NSCoder) {

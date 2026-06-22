@@ -98,6 +98,10 @@ struct Settings: Codable, Equatable {
     var barOrientation: BarOrientation = .horizontal
     var trackingSource: TrackingSource = .mouse
 
+    // App lifecycle (Phase 5).
+    var launchAtLogin: Bool = false
+    var hasSeenOnboarding: Bool = false
+
     init() {}
 
     private enum CodingKeys: String, CodingKey {
@@ -115,6 +119,8 @@ struct Settings: Codable, Equatable {
         case barShape
         case barOrientation
         case trackingSource
+        case launchAtLogin
+        case hasSeenOnboarding
     }
 
     init(from decoder: Decoder) throws {
@@ -134,6 +140,8 @@ struct Settings: Codable, Equatable {
         settings.barShape = try container.decodeIfPresent(BarShape.self, forKey: .barShape) ?? settings.barShape
         settings.barOrientation = try container.decodeIfPresent(BarOrientation.self, forKey: .barOrientation) ?? settings.barOrientation
         settings.trackingSource = try container.decodeIfPresent(TrackingSource.self, forKey: .trackingSource) ?? settings.trackingSource
+        settings.launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? settings.launchAtLogin
+        settings.hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? settings.hasSeenOnboarding
         self = settings
     }
 }

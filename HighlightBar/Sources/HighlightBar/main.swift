@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import CoreGraphics
+import ServiceManagement
 
 final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static var retainedDelegate: HighlightBarApp?
@@ -64,6 +65,12 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let profileStore = ProfileStore()
     private var lastAppliedProfileName: String?
 
+    private let updaterController = UpdaterController()
+    private let onboardingWindow = OnboardingWindow()
+    private var launchAtLoginMenuItem: NSMenuItem?
+    private var launchAtLogin = false
+    private var hasSeenOnboarding = false
+
     private let colorOptions: [(name: String, color: NSColor)] = [
         ("Yellow", .systemYellow),
         ("Green", .systemGreen),
@@ -92,6 +99,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateMenuState()
         startTracking()
         setupHotKeys()
+        showOnboardingIfFirstLaunch()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -121,6 +129,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             value: Double(fontReferenceSize),
             minValue: 10,
             maxValue: 100,
+            accessibilityLabel: "Bar size",
             sliderAction: #selector(fontReferenceChanged(_:)),
             decrementAction: #selector(decreaseFontReference(_:)),
             incrementAction: #selector(increaseFontReference(_:))
@@ -142,6 +151,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             value: Double(barOpacity * 100),
             minValue: 10,
             maxValue: 90,
+            accessibilityLabel: "Bar opacity",
             sliderAction: #selector(transparencyChanged(_:)),
             decrementAction: #selector(decreaseTransparency(_:)),
             incrementAction: #selector(increaseTransparency(_:))
@@ -157,6 +167,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let colorPickerItem = NSMenuItem()
         let colorPickerView = ColorPickerMenuView(options: colorOptions, selectedColorName: selectedColorName)
+        colorPickerView.setAccessibilityLabel("Bar color")
         colorPickerView.onHover = { [weak self] colorName in
             self?.previewColor(named: colorName)
         }
@@ -195,6 +206,21 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         menu.addItem(makeShortcutsMenuItem())
+
+        menu.addItem(.separator())
+
+        let launchAtLoginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        launchAtLoginItem.target = self
+        menu.addItem(launchAtLoginItem)
+        self.launchAtLoginMenuItem = launchAtLoginItem
+
+        let welcomeItem = NSMenuItem(title: "Show Welcome…", action: #selector(showOnboarding), keyEquivalent: "")
+        welcomeItem.target = self
+        menu.addItem(welcomeItem)
+
+        let updatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdatesMenu), keyEquivalent: "")
+        updatesItem.target = self
+        menu.addItem(updatesItem)
 
         menu.addItem(.separator())
 
@@ -333,6 +359,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateRadioState(orientationMenuItems, matching: barOrientation)
         updateRadioState(trackingMenuItems, matching: trackingSource)
         updateProfilesMenuState()
+        updateLaunchAtLoginMenuItem()
         updateLockMenuItem()
     }
 
@@ -507,6 +534,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             value: Double(activeOverlayOpacity * 100),
             minValue: 10,
             maxValue: 90,
+            accessibilityLabel: "Overlay opacity",
             sliderAction: #selector(overlayOpacityChanged(_:)),
             decrementAction: #selector(decreaseOverlayOpacity(_:)),
             incrementAction: #selector(increaseOverlayOpacity(_:))
@@ -520,6 +548,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let overlayColorItem = NSMenuItem()
         let overlayPicker = ColorPickerMenuView(options: colorOptions, selectedColorName: activeOverlayColorName)
+        overlayPicker.setAccessibilityLabel("Overlay color")
         overlayPicker.onSelect = { [weak self] colorName in
             self?.selectOverlayColor(colorName)
         }
@@ -852,6 +881,50 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateProfilesMenuState()
     }
 
+    // MARK: - Launch at login, onboarding, updates
+
+    @objc private func toggleLaunchAtLogin() {
+        setLaunchAtLogin(!isLaunchAtLoginEnabled())
+    }
+
+    private func isLaunchAtLoginEnabled() -> Bool {
+        return SMAppService.mainApp.status == .enabled
+    }
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled, SMAppService.mainApp.status != .enabled {
+                try SMAppService.mainApp.register()
+            } else if !enabled, SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            NSLog("Highlight Bar: launch-at-login update failed: \(error.localizedDescription)")
+        }
+        launchAtLogin = isLaunchAtLoginEnabled()
+        saveSettings()
+        updateLaunchAtLoginMenuItem()
+    }
+
+    private func updateLaunchAtLoginMenuItem() {
+        launchAtLoginMenuItem?.state = isLaunchAtLoginEnabled() ? .on : .off
+    }
+
+    @objc private func showOnboarding() {
+        onboardingWindow.show()
+    }
+
+    private func showOnboardingIfFirstLaunch() {
+        guard !hasSeenOnboarding else { return }
+        hasSeenOnboarding = true
+        saveSettings()
+        onboardingWindow.show()
+    }
+
+    @objc private func checkForUpdatesMenu() {
+        updaterController.checkForUpdates()
+    }
+
     private func colorOption(named colorName: String) -> (name: String, color: NSColor)? {
         return colorOptions.first(where: { $0.name == colorName })
     }
@@ -917,6 +990,9 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         barShape = settings.barShape
         barOrientation = settings.barOrientation
         trackingSource = settings.trackingSource
+
+        launchAtLogin = settings.launchAtLogin
+        hasSeenOnboarding = settings.hasSeenOnboarding
     }
 
     // Serializes the complete current state. Every Settings field has a backing
@@ -937,6 +1013,8 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.barShape = barShape
         settings.barOrientation = barOrientation
         settings.trackingSource = trackingSource
+        settings.launchAtLogin = launchAtLogin
+        settings.hasSeenOnboarding = hasSeenOnboarding
         settingsStore.save(settings)
     }
 
@@ -962,6 +1040,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         value: Double,
         minValue: Double,
         maxValue: Double,
+        accessibilityLabel: String,
         sliderAction: Selector,
         decrementAction: Selector,
         incrementAction: Selector
@@ -973,6 +1052,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let minusButton = NSButton(title: "-", target: self, action: decrementAction)
         minusButton.bezelStyle = .roundRect
         minusButton.frame = NSRect(x: 8, y: 3, width: 30, height: 24)
+        minusButton.setAccessibilityLabel("Decrease \(accessibilityLabel)")
         container.addSubview(minusButton)
 
         let slider = NSSlider(
@@ -984,11 +1064,13 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         slider.isContinuous = true
         slider.frame = NSRect(x: 44, y: 5, width: containerWidth - 88, height: 20)
+        slider.setAccessibilityLabel(accessibilityLabel)
         container.addSubview(slider)
 
         let plusButton = NSButton(title: "+", target: self, action: incrementAction)
         plusButton.bezelStyle = .roundRect
         plusButton.frame = NSRect(x: containerWidth - 38, y: 3, width: 30, height: 24)
+        plusButton.setAccessibilityLabel("Increase \(accessibilityLabel)")
         container.addSubview(plusButton)
 
         let item = NSMenuItem()

@@ -8,6 +8,11 @@ on:
     tags:
       - "v*"
 
+# This workflow signs (Developer ID), notarizes, and staples the app, then
+# publishes HighlightBar-macos.zip and the Sparkle EdDSA signature for the
+# appcast. It needs the secrets/variables documented in RELEASE.md. Until those
+# are set, the build/sign step falls back to an ad-hoc signature and the
+# notarization step will fail — which is expected.
 jobs:
   release:
     runs-on: macos-latest
@@ -17,17 +22,70 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Build app bundle
+      - name: Derive version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "marketing=${TAG#v}" >> "$GITHUB_OUTPUT"
+          # Monotonic build number for Sparkle's version comparison.
+          echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve dependencies (Sparkle)
+        run: swift package resolve --package-path HighlightBar
+
+      - name: Import Developer ID Application certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERT_PASSWORD }}
+
+      - name: Build & sign app (Hardened Runtime)
+        env:
+          CODESIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          BUNDLE_ID: ${{ vars.BUNDLE_ID }}
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
+          BUILD_VERSION: ${{ steps.version.outputs.build }}
+          SU_FEED_URL: ${{ vars.SU_FEED_URL }}
+          SU_PUBLIC_ED_KEY: ${{ vars.SU_PUBLIC_ED_KEY }}
         run: ./HighlightBar/scripts/build-app.sh
 
-      - name: Zip app bundle
+      - name: Notarize & staple
+        env:
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+          AC_API_KEY_P8: ${{ secrets.AC_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          APP="HighlightBar/dist/HighlightBar.app"
+          KEYFILE="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$AC_API_KEY_P8" > "$KEYFILE"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$KEYFILE" --key-id "$AC_API_KEY_ID" --issuer "$AC_API_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "$APP"
+
+      - name: Package release zip
         run: |
           mkdir -p artifacts
           ditto -c -k --sequesterRsrc --keepParent "HighlightBar/dist/HighlightBar.app" "artifacts/HighlightBar-macos.zip"
 
-      - name: Upload release asset
+      - name: Sign update for Sparkle appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          SIGN_UPDATE="$(find HighlightBar/.build -path '*/bin/sign_update' -type f | head -n1)"
+          KEYFILE="$RUNNER_TEMP/sparkle_ed_private.key"
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$KEYFILE"
+          # Emits sparkle:edSignature and length attributes for the appcast item.
+          "$SIGN_UPDATE" --ed-key-file "$KEYFILE" "artifacts/HighlightBar-macos.zip" \
+            | tee "artifacts/sparkle-signature.txt"
+
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || gh release create "${{ github.ref_name }}" --generate-notes
           gh release upload "${{ github.ref_name }}" "artifacts/HighlightBar-macos.zip" --clobber
+          gh release upload "${{ github.ref_name }}" "artifacts/sparkle-signature.txt" --clobber

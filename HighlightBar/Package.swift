@@ -9,7 +9,15 @@ let package = Package(
     products: [
         .executable(name: "HighlightBar", targets: ["HighlightBar"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0")
+    ],
     targets: [
-        .executableTarget(name: "HighlightBar")
+        .executableTarget(
+            name: "HighlightBar",
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle")
+            ]
+        )
     ]
 )

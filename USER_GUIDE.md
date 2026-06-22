@@ -109,10 +109,21 @@ From the `HB` menu:
 
 Your saved profiles and the last-applied profile are remembered.
 
+## Launch at Login, Welcome & Updates (macOS)
+
+From the `HB` menu:
+
+- **Launch at Login** — toggle to have Highlight Bar start automatically when you
+  log in.
+- **Show Welcome…** — re-open the first-run welcome with the shortcut tips.
+- **Check for Updates…** — check for a newer version. Updates are opt-in: the app
+  never checks on its own and makes no network request unless you choose this.
+
 ## Update To A New Version
 
-1. Download the latest zip from the latest release page.
-2. Replace your old app with the new one.
+- macOS: choose `Check for Updates…` in the `HB` menu (in a released build), or
+  download the latest zip from the releases page and replace the app.
+- Windows: download the latest zip and replace the app.
 
 ## Uninstall
 

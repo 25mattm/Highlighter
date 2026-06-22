@@ -16,6 +16,8 @@ final class OverlayView: NSView {
         autoresizingMask = [.width, .height]
         maskLayer.fillRule = .evenOdd
         maskLayer.fillColor = NSColor.black.cgColor
+        // Decorative: keep VoiceOver out of the screen overlay.
+        setAccessibilityElement(false)
     }
 
     required init?(coder: NSCoder) {

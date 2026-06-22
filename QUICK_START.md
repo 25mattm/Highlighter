@@ -40,6 +40,8 @@ If SmartScreen appears: `More info -> Run anyway`.
 6. Apply a profile (macOS): menu `HB` → `Profiles` → `Dyslexia` / `ADHD / Focus` / `Low vision` (or save your own).
 7. Quit from menu: `Quit Highlight Bar`
 
+On macOS the same `HB` menu also has **Launch at Login**, **Show Welcome…**, and an opt-in **Check for Updates…**.
+
 ## Need More Help?
 
 See full guide: `USER_GUIDE.md`
