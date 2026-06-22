@@ -37,7 +37,8 @@ If SmartScreen appears: `More info -> Run anyway`.
 3. Show/hide the bar: `Ctrl + Shift + H` (Windows) or `⌘ + Shift + H` (macOS).
 4. Lock the bar in place (macOS): `⌘ + Shift + L`; while locked, nudge it with `⌘ + Shift + ↑` / `⌘ + Shift + ↓`.
 5. Pick a display mode (macOS): menu `HB` → `Mode` → `Bar only` / `Bar + spotlight` / `Screen tint`.
-6. Quit from menu: `Quit Highlight Bar`
+6. Apply a profile (macOS): menu `HB` → `Profiles` → `Dyslexia` / `ADHD / Focus` / `Low vision` (or save your own).
+7. Quit from menu: `Quit Highlight Bar`
 
 ## Need More Help?
 

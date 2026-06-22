@@ -11,20 +11,22 @@ enum BarGeometry {
         return NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main
     }
 
-    /// Frame for a full-width horizontal bar of `height`, vertically centered on
-    /// the cursor and clamped so it never strands off `screen`.
-    static func barFrame(forMouse mouse: NSPoint, height: CGFloat, on screen: NSScreen) -> NSRect {
+    /// Frame for the bar of the given `thickness`, centered on `anchor` along its
+    /// free axis and clamped so it never strands off `screen`.
+    ///
+    /// - Horizontal: a full-width band, vertically centered on `anchor.y`.
+    /// - Vertical: a full-height column, horizontally centered on `anchor.x`.
+    static func barFrame(forAnchor anchor: NSPoint, thickness: CGFloat, orientation: BarOrientation, on screen: NSScreen) -> NSRect {
         let bounds = screen.frame
-        var originY = mouse.y - height / 2.0
-        originY = max(bounds.minY, min(originY, bounds.maxY - height))
-        return NSRect(x: bounds.minX, y: originY, width: bounds.width, height: height)
-    }
-
-    /// Re-clamp an existing bar frame onto `screen` after a display change. Keeps
-    /// the bar full-width on its screen and its vertical origin within bounds.
-    static func clamped(frame: NSRect, height: CGFloat, on screen: NSScreen) -> NSRect {
-        let bounds = screen.frame
-        let originY = max(bounds.minY, min(frame.origin.y, bounds.maxY - height))
-        return NSRect(x: bounds.minX, y: originY, width: bounds.width, height: height)
+        switch orientation {
+        case .horizontal:
+            var originY = anchor.y - thickness / 2.0
+            originY = max(bounds.minY, min(originY, bounds.maxY - thickness))
+            return NSRect(x: bounds.minX, y: originY, width: bounds.width, height: thickness)
+        case .vertical:
+            var originX = anchor.x - thickness / 2.0
+            originX = max(bounds.minX, min(originX, bounds.maxX - thickness))
+            return NSRect(x: originX, y: bounds.minY, width: thickness, height: bounds.height)
+        }
     }
 }

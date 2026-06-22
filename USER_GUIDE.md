@@ -83,6 +83,32 @@ separately for the spotlight and the tint). Overlays cover every display and sta
 fully click-through, so you can keep working underneath them. `⌘ + Shift + H`
 hides or shows the whole highlighter — bar and overlay together.
 
+## Shape, Orientation & Tracking (macOS)
+
+From the `HB` menu:
+
+- **Shape** — `Ruler (band)` is the thick reading band; `Line (thin)` is a slim
+  guide line.
+- **Orientation** — `Horizontal` follows the cursor up and down; `Vertical
+  (column)` is a full-height column that follows the cursor left and right.
+- **Tracking** — what moves the bar:
+  - `Mouse` (default) — follows the cursor. No permission needed.
+  - `Scroll wheel` — the bar moves as you scroll. No permission needed.
+  - `Keyboard (arrows)` — arrow keys move the bar. This needs macOS **Input
+    Monitoring** permission; Highlight Bar asks for it and stays on Mouse until
+    you grant access.
+
+## Profiles (macOS)
+
+`HB` menu → `Profiles` applies a whole bundle of settings in one tap:
+
+- Built-ins: **Dyslexia**, **ADHD / Focus**, **Low vision** — sensible starting
+  points you can tweak afterwards.
+- **Save Current as…** stores your current setup as a named profile.
+- **Delete Saved Profile** removes one of your saved profiles.
+
+Your saved profiles and the last-applied profile are remembered.
+
 ## Update To A New Version
 
 1. Download the latest zip from the latest release page.

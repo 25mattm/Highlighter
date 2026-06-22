@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import CoreGraphics
 
 final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static var retainedDelegate: HighlightBarApp?
@@ -29,8 +30,13 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var overlayColorPickerView: ColorPickerMenuView?
     private var overlayInfoItem: NSMenuItem?
     private var modeMenuItems: [NSMenuItem] = []
+    private var shapeMenuItems: [NSMenuItem] = []
+    private var orientationMenuItems: [NSMenuItem] = []
+    private var trackingMenuItems: [NSMenuItem] = []
+    private var profileMenuItems: [NSMenuItem] = []
+    private var deleteProfileMenuItem: NSMenuItem?
+    private var profilesSubmenu: NSMenu?
 
-    private var barHeight: CGFloat = 44
     private let barCornerRadius: CGFloat = 10
     private let barWindowLevel: NSWindow.Level = .screenSaver
     private var barOpacity: CGFloat = 0.35
@@ -45,7 +51,18 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var tintColorName = "Yellow"
     private var tintOpacity: CGFloat = 0.2
 
+    private var barShape: BarShape = .ruler
+    private var barOrientation: BarOrientation = .horizontal
+    private var trackingSource: TrackingSource = .mouse
+    private var trackedPoint: NSPoint = .zero
+    private var scrollMonitorGlobal: Any?
+    private var scrollMonitorLocal: Any?
+    private var keyMonitorGlobal: Any?
+    private var keyMonitorLocal: Any?
+
     private let settingsStore = SettingsStore()
+    private let profileStore = ProfileStore()
+    private var lastAppliedProfileName: String?
 
     private let colorOptions: [(name: String, color: NSColor)] = [
         ("Yellow", .systemYellow),
@@ -71,6 +88,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         createWindow()
         applyAppearance()
         applyMode()
+        applyTrackingSource()
         updateMenuState()
         startTracking()
         setupHotKeys()
@@ -79,6 +97,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
         hotKeyCenter?.unregisterAll()
+        removeEventMonitors()
     }
 
     private func setupStatusItem() {
@@ -88,6 +107,10 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let menu = NSMenu()
         menu.delegate = self
+
+        menu.addItem(makeProfilesMenuItem())
+
+        menu.addItem(.separator())
 
         let heightInfoItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         heightInfoItem.isEnabled = false
@@ -104,6 +127,9 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         menu.addItem(fontSliderItem)
         self.fontSlider = fontSlider
+
+        menu.addItem(makeShapeMenuItem())
+        menu.addItem(makeOrientationMenuItem())
 
         menu.addItem(.separator())
 
@@ -144,6 +170,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         menu.addItem(makeModeMenuItem())
+        menu.addItem(makeTrackingMenuItem())
 
         menu.addItem(.separator())
 
@@ -230,19 +257,41 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         guard let screen = BarGeometry.screen(containing: anchor) else { return }
 
-        let newFrame = BarGeometry.barFrame(forMouse: anchor, height: barHeight, on: screen)
+        let newFrame = BarGeometry.barFrame(
+            forAnchor: anchor,
+            thickness: currentThickness(),
+            orientation: barOrientation,
+            on: screen
+        )
         if window.frame != newFrame {
             window.setFrame(newFrame, display: true)
         }
     }
 
-    /// The point the bar is anchored to: the frozen lock anchor while locked,
-    /// otherwise the live cursor location.
+    /// The point the bar is anchored to: the frozen lock anchor while locked, the
+    /// scroll/keyboard-driven point for those tracking sources, otherwise the
+    /// live cursor location.
     private func currentAnchor() -> NSPoint {
         if isLocked, let x = lockedAnchorX, let y = lockedAnchorY {
             return NSPoint(x: x, y: y)
         }
-        return NSEvent.mouseLocation
+        switch trackingSource {
+        case .mouse:
+            return NSEvent.mouseLocation
+        case .scroll, .keyboard:
+            return trackedPoint
+        }
+    }
+
+    // The bar's thin dimension. A ruler is a thick reading band (≈2× the font
+    // reference); a line is a slim guide that still scales gently with the slider.
+    private func currentThickness() -> CGFloat {
+        switch barShape {
+        case .ruler:
+            return computedBarHeight(fromFontReference: fontReferenceSize)
+        case .line:
+            return max(2, min(40, round(fontReferenceSize * 0.3)))
+        }
     }
 
     // Re-clamp the bar and rebuild overlays after a resolution change or monitor
@@ -262,8 +311,8 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateMenuState() {
         heightInfoItem?.title = String(
-            format: "Height: %.0f px (%.0f pt reference)",
-            barHeight,
+            format: "Bar size: %.0f px (%.0f pt reference)",
+            currentThickness(),
             fontReferenceSize
         )
         transparencyInfoItem?.title = String(
@@ -280,7 +329,19 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         overlayInfoItem?.title = overlayInfoTitle()
 
         updateModeMenuState()
+        updateRadioState(shapeMenuItems, matching: barShape)
+        updateRadioState(orientationMenuItems, matching: barOrientation)
+        updateRadioState(trackingMenuItems, matching: trackingSource)
+        updateProfilesMenuState()
         updateLockMenuItem()
+    }
+
+    // Sets the checkmark on whichever item in a radio group holds `value`.
+    private func updateRadioState<T: Equatable>(_ items: [NSMenuItem], matching value: T) {
+        for item in items {
+            guard let itemValue = item.representedObject as? T else { continue }
+            item.state = (itemValue == value) ? .on : .off
+        }
     }
 
     private func applyAppearance() {
@@ -403,9 +464,13 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateModeMenuState() {
-        for item in modeMenuItems {
-            guard let itemMode = item.representedObject as? HighlightMode else { continue }
-            item.state = (itemMode == mode) ? .on : .off
+        updateRadioState(modeMenuItems, matching: mode)
+    }
+
+    private func updateProfilesMenuState() {
+        for item in profileMenuItems {
+            guard let name = item.representedObject as? String else { continue }
+            item.state = (name == lastAppliedProfileName) ? .on : .off
         }
     }
 
@@ -466,6 +531,327 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
+    // MARK: - Shape & orientation
+
+    @objc private func selectShape(_ sender: NSMenuItem) {
+        guard let newShape = sender.representedObject as? BarShape else { return }
+        barShape = newShape
+        saveSettings()
+        updateBarPosition()
+        refreshSpotlightIfNeeded()
+        updateMenuState()
+    }
+
+    @objc private func selectOrientation(_ sender: NSMenuItem) {
+        guard let newOrientation = sender.representedObject as? BarOrientation else { return }
+        barOrientation = newOrientation
+        saveSettings()
+        updateBarPosition()
+        refreshSpotlightIfNeeded()
+        updateMenuState()
+    }
+
+    private func refreshSpotlightIfNeeded() {
+        guard mode == .barAndSpotlight, !isHidden else { return }
+        overlayController?.updateSpotlight(barFrame: windowManager?.barWindow.frame ?? .zero)
+    }
+
+    private func makeShapeMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Shape", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        shapeMenuItems = []
+        for shape in BarShape.allCases {
+            let shapeItem = NSMenuItem(title: shape.menuTitle, action: #selector(selectShape(_:)), keyEquivalent: "")
+            shapeItem.target = self
+            shapeItem.representedObject = shape
+            submenu.addItem(shapeItem)
+            shapeMenuItems.append(shapeItem)
+        }
+        item.submenu = submenu
+        return item
+    }
+
+    private func makeOrientationMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Orientation", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        orientationMenuItems = []
+        for orientation in BarOrientation.allCases {
+            let orientationItem = NSMenuItem(title: orientation.menuTitle, action: #selector(selectOrientation(_:)), keyEquivalent: "")
+            orientationItem.target = self
+            orientationItem.representedObject = orientation
+            submenu.addItem(orientationItem)
+            orientationMenuItems.append(orientationItem)
+        }
+        item.submenu = submenu
+        return item
+    }
+
+    // MARK: - Tracking source
+
+    @objc private func selectTracking(_ sender: NSMenuItem) {
+        guard let newSource = sender.representedObject as? TrackingSource else { return }
+        trackingSource = newSource
+        saveSettings()
+        applyTrackingSource()
+        updateMenuState()
+    }
+
+    private func makeTrackingMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Tracking", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        trackingMenuItems = []
+        for source in TrackingSource.allCases {
+            let sourceItem = NSMenuItem(title: source.menuTitle, action: #selector(selectTracking(_:)), keyEquivalent: "")
+            sourceItem.target = self
+            sourceItem.representedObject = source
+            submenu.addItem(sourceItem)
+            trackingMenuItems.append(sourceItem)
+        }
+        item.submenu = submenu
+        return item
+    }
+
+    private func applyTrackingSource() {
+        removeEventMonitors()
+        seedTrackedPoint()
+        switch trackingSource {
+        case .mouse:
+            break
+        case .scroll:
+            installScrollMonitors()
+        case .keyboard:
+            installKeyboardMonitors()
+        }
+    }
+
+    // Seed the scroll/keyboard tracked point at the bar's current center (or the
+    // cursor) so switching sources doesn't make the bar jump.
+    private func seedTrackedPoint() {
+        if let frame = windowManager?.barWindow.frame, frame.width > 0, frame.height > 0 {
+            trackedPoint = NSPoint(x: frame.midX, y: frame.midY)
+        } else {
+            trackedPoint = NSEvent.mouseLocation
+        }
+    }
+
+    private func removeEventMonitors() {
+        for monitor in [scrollMonitorGlobal, scrollMonitorLocal, keyMonitorGlobal, keyMonitorLocal] {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+        }
+        scrollMonitorGlobal = nil
+        scrollMonitorLocal = nil
+        keyMonitorGlobal = nil
+        keyMonitorLocal = nil
+    }
+
+    // Scroll tracking uses NSEvent mouse-event monitors, which need no
+    // Accessibility / Input Monitoring permission.
+    private func installScrollMonitors() {
+        scrollMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+            self?.handleScroll(event)
+        }
+        scrollMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+            self?.handleScroll(event)
+            return event
+        }
+    }
+
+    private func handleScroll(_ event: NSEvent) {
+        guard trackingSource == .scroll, !isHidden, !isLocked else { return }
+        switch barOrientation {
+        case .horizontal: trackedPoint.y += event.scrollingDeltaY
+        case .vertical:   trackedPoint.x += event.scrollingDeltaY
+        }
+        clampTrackedPoint()
+        updateBarPosition()
+        refreshSpotlightIfNeeded()
+    }
+
+    // Keyboard tracking needs the Input Monitoring permission, so it is opt-in
+    // and primed with a clear explanation. Mouse stays the no-permission default.
+    private func installKeyboardMonitors() {
+        guard ensureInputMonitoringPermission() else {
+            trackingSource = .mouse
+            saveSettings()
+            updateRadioState(trackingMenuItems, matching: trackingSource)
+            return
+        }
+        keyMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            self?.handleKey(event)
+        }
+        keyMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            self?.handleKey(event)
+            return event
+        }
+    }
+
+    private func handleKey(_ event: NSEvent) {
+        guard trackingSource == .keyboard, !isHidden, !isLocked else { return }
+        let step = currentThickness()
+        switch Int(event.keyCode) {
+        case kVK_UpArrow: trackedPoint.y += step
+        case kVK_DownArrow: trackedPoint.y -= step
+        case kVK_LeftArrow: trackedPoint.x -= step
+        case kVK_RightArrow: trackedPoint.x += step
+        default: return
+        }
+        clampTrackedPoint()
+        updateBarPosition()
+        refreshSpotlightIfNeeded()
+    }
+
+    private func clampTrackedPoint() {
+        guard let screen = BarGeometry.screen(containing: trackedPoint) else { return }
+        let bounds = screen.frame
+        trackedPoint.x = max(bounds.minX, min(trackedPoint.x, bounds.maxX))
+        trackedPoint.y = max(bounds.minY, min(trackedPoint.y, bounds.maxY))
+    }
+
+    // Triggers the Input Monitoring prompt and reports whether access is granted.
+    private func ensureInputMonitoringPermission() -> Bool {
+        if CGPreflightListenEventAccess() {
+            return true
+        }
+        let granted = CGRequestListenEventAccess()
+        if !granted {
+            presentInputMonitoringHelp()
+        }
+        return granted
+    }
+
+    private func presentInputMonitoringHelp() {
+        let alert = NSAlert()
+        alert.messageText = "Keyboard tracking needs Input Monitoring"
+        alert.informativeText = "To drive the bar with the arrow keys, grant Highlight Bar access under System Settings → Privacy & Security → Input Monitoring, then choose Keyboard tracking again. Until then, tracking stays on Mouse."
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Not Now")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn,
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    // MARK: - Profiles
+
+    @objc private func applyProfileMenuItem(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String,
+              let profile = profileStore.allProfiles().first(where: { $0.name == name }) else { return }
+        applyProfile(profile)
+    }
+
+    private func applyProfile(_ profile: Profile) {
+        adopt(profile.settings)
+        lastAppliedProfileName = profile.name
+        profileStore.lastAppliedName = profile.name
+        saveSettings()
+
+        // Refresh every subsystem to match the freshly-adopted settings.
+        applyAppearance()
+        applyTrackingSource()
+        applyMode()
+        updateNudgeHotKeys()
+        updateMenuState()
+    }
+
+    @objc private func saveCurrentAsProfile() {
+        guard let name = promptForProfileName() else { return }
+        let snapshot = currentSettingsSnapshot()
+        var customs = profileStore.loadCustom()
+        if let index = customs.firstIndex(where: { $0.name == name }) {
+            customs[index] = Profile(name: name, settings: snapshot, isBuiltIn: false)
+        } else {
+            customs.append(Profile(name: name, settings: snapshot, isBuiltIn: false))
+        }
+        profileStore.saveCustom(customs)
+        lastAppliedProfileName = name
+        profileStore.lastAppliedName = name
+        rebuildProfilesSubmenu()
+        updateMenuState()
+    }
+
+    @objc private func deleteCustomProfile(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        var customs = profileStore.loadCustom()
+        customs.removeAll { $0.name == name }
+        profileStore.saveCustom(customs)
+        if lastAppliedProfileName == name {
+            lastAppliedProfileName = nil
+            profileStore.lastAppliedName = nil
+        }
+        rebuildProfilesSubmenu()
+        updateMenuState()
+    }
+
+    private func promptForProfileName() -> String? {
+        let alert = NSAlert()
+        alert.messageText = "Save Current Settings as Profile"
+        alert.informativeText = "Enter a name for this profile."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        field.placeholderString = "My profile"
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+
+    private func makeProfilesMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Profiles", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        item.submenu = submenu
+        profilesSubmenu = submenu
+        rebuildProfilesSubmenu()
+        return item
+    }
+
+    // Repopulates the Profiles submenu so newly-saved/deleted customs appear.
+    private func rebuildProfilesSubmenu() {
+        guard let submenu = profilesSubmenu else { return }
+        submenu.removeAllItems()
+        profileMenuItems = []
+
+        for profile in profileStore.allProfiles() {
+            let profileItem = NSMenuItem(title: profile.name, action: #selector(applyProfileMenuItem(_:)), keyEquivalent: "")
+            profileItem.target = self
+            profileItem.representedObject = profile.name
+            submenu.addItem(profileItem)
+            profileMenuItems.append(profileItem)
+        }
+
+        submenu.addItem(.separator())
+
+        let saveItem = NSMenuItem(title: "Save Current as…", action: #selector(saveCurrentAsProfile), keyEquivalent: "")
+        saveItem.target = self
+        submenu.addItem(saveItem)
+
+        let customs = profileStore.loadCustom()
+        let deleteItem = NSMenuItem(title: "Delete Saved Profile", action: nil, keyEquivalent: "")
+        if customs.isEmpty {
+            deleteItem.isEnabled = false
+        } else {
+            let deleteSubmenu = NSMenu()
+            for profile in customs {
+                let deleteEntry = NSMenuItem(title: profile.name, action: #selector(deleteCustomProfile(_:)), keyEquivalent: "")
+                deleteEntry.target = self
+                deleteEntry.representedObject = profile.name
+                deleteSubmenu.addItem(deleteEntry)
+            }
+            deleteItem.submenu = deleteSubmenu
+        }
+        submenu.addItem(deleteItem)
+        deleteProfileMenuItem = deleteItem
+
+        updateProfilesMenuState()
+    }
+
     private func colorOption(named colorName: String) -> (name: String, color: NSColor)? {
         return colorOptions.first(where: { $0.name == colorName })
     }
@@ -499,12 +885,17 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func loadSettings() {
-        let settings = settingsStore.load()
+        adopt(settingsStore.load())
+        lastAppliedProfileName = profileStore.lastAppliedName
+    }
 
+    // Loads a Settings value into the live properties (with clamping/validation).
+    // Used both at launch and when applying a profile.
+    private func adopt(_ settings: Settings) {
         fontReferenceSize = clamped(CGFloat(settings.fontReferenceSize), min: 10, max: 100)
         barOpacity = clamped(CGFloat(settings.barOpacity), min: 0.10, max: 0.90)
 
-        if let match = colorOptions.first(where: { $0.name == settings.colorName }) {
+        if let match = colorOption(named: settings.colorName) {
             selectedColorName = match.name
             barColor = match.color
         }
@@ -523,7 +914,9 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         tintOpacity = clamped(CGFloat(settings.tintOpacity), min: 0.10, max: 0.90)
 
-        barHeight = computedBarHeight(fromFontReference: fontReferenceSize)
+        barShape = settings.barShape
+        barOrientation = settings.barOrientation
+        trackingSource = settings.trackingSource
     }
 
     // Serializes the complete current state. Every Settings field has a backing
@@ -541,7 +934,28 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.spotlightOpacity = Double(spotlightOpacity)
         settings.tintColorName = tintColorName
         settings.tintOpacity = Double(tintOpacity)
+        settings.barShape = barShape
+        settings.barOrientation = barOrientation
+        settings.trackingSource = trackingSource
         settingsStore.save(settings)
+    }
+
+    // A snapshot of the current configuration for saving as a custom profile.
+    // Lock state/position are excluded so a profile stays portable across setups.
+    private func currentSettingsSnapshot() -> Settings {
+        var settings = Settings()
+        settings.fontReferenceSize = Double(fontReferenceSize)
+        settings.barOpacity = Double(barOpacity)
+        settings.colorName = selectedColorName
+        settings.mode = mode
+        settings.spotlightColorName = spotlightColorName
+        settings.spotlightOpacity = Double(spotlightOpacity)
+        settings.tintColorName = tintColorName
+        settings.tintOpacity = Double(tintOpacity)
+        settings.barShape = barShape
+        settings.barOrientation = barOrientation
+        settings.trackingSource = trackingSource
+        return settings
     }
 
     private func makeAdjustableSliderMenuItem(
@@ -584,12 +998,12 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func setFontReference(_ value: CGFloat, persist: Bool) {
         fontReferenceSize = clamped(value, min: 10, max: 100)
-        barHeight = computedBarHeight(fromFontReference: fontReferenceSize)
         if persist {
             saveSettings()
         }
         updateMenuState()
         updateBarPosition()
+        refreshSpotlightIfNeeded()
     }
 
     private func setTransparencyPercent(_ percent: CGFloat, persist: Bool) {
@@ -717,9 +1131,16 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let anchor = NSPoint(x: x, y: y)
         guard let screen = BarGeometry.screen(containing: anchor) else { return }
 
-        let delta = up ? barHeight : -barHeight
-        let nudged = NSPoint(x: x, y: y + Double(delta))
-        let frame = BarGeometry.barFrame(forMouse: nudged, height: barHeight, on: screen)
+        let thickness = currentThickness()
+        let delta = up ? thickness : -thickness
+        // Nudge along the bar's free axis: vertically for a horizontal band,
+        // horizontally for a vertical column.
+        let nudged: NSPoint
+        switch barOrientation {
+        case .horizontal: nudged = NSPoint(x: x, y: y + Double(delta))
+        case .vertical:   nudged = NSPoint(x: x + Double(delta), y: y)
+        }
+        let frame = BarGeometry.barFrame(forAnchor: nudged, thickness: thickness, orientation: barOrientation, on: screen)
         lockedAnchorX = Double(frame.midX)
         lockedAnchorY = Double(frame.midY)
         saveSettings()

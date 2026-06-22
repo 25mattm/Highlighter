@@ -22,6 +22,50 @@ enum HighlightMode: String, Codable, CaseIterable {
     }
 }
 
+/// The bar's thickness profile: a thick reading band or a thin guide line.
+enum BarShape: String, Codable, CaseIterable {
+    case ruler
+    case line
+
+    var menuTitle: String {
+        switch self {
+        case .ruler: return "Ruler (band)"
+        case .line: return "Line (thin)"
+        }
+    }
+}
+
+/// Whether the bar is a horizontal band (follows the cursor's Y) or a vertical
+/// column (follows the cursor's X).
+enum BarOrientation: String, Codable, CaseIterable {
+    case horizontal
+    case vertical
+
+    var menuTitle: String {
+        switch self {
+        case .horizontal: return "Horizontal"
+        case .vertical: return "Vertical (column)"
+        }
+    }
+}
+
+/// What drives the bar's position. Mouse is the default and needs no permission;
+/// scroll uses a mouse-event monitor; keyboard needs Input Monitoring and is
+/// opt-in.
+enum TrackingSource: String, Codable, CaseIterable {
+    case mouse
+    case scroll
+    case keyboard
+
+    var menuTitle: String {
+        switch self {
+        case .mouse: return "Mouse"
+        case .scroll: return "Scroll wheel"
+        case .keyboard: return "Keyboard (arrows)"
+        }
+    }
+}
+
 /// The single source of truth for everything the user can configure. Persisted
 /// as JSON under one `UserDefaults` key so it can grow over the project's phases
 /// without scattering keys.
@@ -49,6 +93,11 @@ struct Settings: Codable, Equatable {
     var tintColorName: String = "Yellow"
     var tintOpacity: Double = 0.2
 
+    // Reading modes (Phase 4).
+    var barShape: BarShape = .ruler
+    var barOrientation: BarOrientation = .horizontal
+    var trackingSource: TrackingSource = .mouse
+
     init() {}
 
     private enum CodingKeys: String, CodingKey {
@@ -63,6 +112,9 @@ struct Settings: Codable, Equatable {
         case spotlightOpacity
         case tintColorName
         case tintOpacity
+        case barShape
+        case barOrientation
+        case trackingSource
     }
 
     init(from decoder: Decoder) throws {
@@ -79,6 +131,9 @@ struct Settings: Codable, Equatable {
         settings.spotlightOpacity = try container.decodeIfPresent(Double.self, forKey: .spotlightOpacity) ?? settings.spotlightOpacity
         settings.tintColorName = try container.decodeIfPresent(String.self, forKey: .tintColorName) ?? settings.tintColorName
         settings.tintOpacity = try container.decodeIfPresent(Double.self, forKey: .tintOpacity) ?? settings.tintOpacity
+        settings.barShape = try container.decodeIfPresent(BarShape.self, forKey: .barShape) ?? settings.barShape
+        settings.barOrientation = try container.decodeIfPresent(BarOrientation.self, forKey: .barOrientation) ?? settings.barOrientation
+        settings.trackingSource = try container.decodeIfPresent(TrackingSource.self, forKey: .trackingSource) ?? settings.trackingSource
         self = settings
     }
 }
