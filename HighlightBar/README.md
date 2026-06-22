@@ -40,6 +40,25 @@ open "dist/HighlightBar.app"
 - Show/Hide: toggle the bar with the global `⌘ + Shift + H` shortcut or the `Hide Bar` / `Show Bar` menu item.
 - Settings persistence: height reference, transparency, and color are remembered and restored on next launch.
 
+## Multi-monitor
+
+The bar follows the cursor onto whichever display it is on, sized in points so it
+renders at the same physical size on Retina and non-Retina screens. When displays
+change at runtime (resolution change, monitor plugged/unplugged) the bar
+re-clamps so it is never stranded off-screen.
+
 ## Code
 
-Main logic lives in `Sources/HighlightBar/main.swift`.
+The app is a single SPM target split into focused files in
+`Sources/HighlightBar/`:
+
+- `main.swift` — entry point and the `HighlightBarApp` coordinator (status-bar
+  menu, settings wiring, cursor tracking, global hotkey).
+- `Settings.swift` — the `Settings` model plus `SettingsStore`, which persists to
+  `UserDefaults` as JSON and migrates the older flat keys.
+- `BarGeometry.swift` — pure, side-effect-free geometry for placing/clamping the
+  bar on a screen (reused by later overlay work).
+- `OverlayWindowManager.swift` — the shared always-on-top, click-through window
+  factory and live display-change handling.
+- `HighlightBarView.swift` / `ColorPickerMenuView.swift` — the bar view and the
+  in-menu color picker.

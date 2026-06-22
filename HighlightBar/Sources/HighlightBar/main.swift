@@ -4,13 +4,7 @@ import Carbon.HIToolbox
 final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static var retainedDelegate: HighlightBarApp?
 
-    private enum DefaultsKey {
-        static let fontReferenceSize = "fontReferenceSize"
-        static let barOpacity = "barOpacity"
-        static let colorName = "colorName"
-    }
-
-    private var window: NSWindow?
+    private var windowManager: OverlayWindowManager?
     private var barView: HighlightBarView?
     private var statusItem: NSStatusItem?
     private var timer: Timer?
@@ -26,12 +20,13 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var barHeight: CGFloat = 44
     private let barCornerRadius: CGFloat = 10
+    private let barWindowLevel: NSWindow.Level = .screenSaver
     private var barOpacity: CGFloat = 0.35
     private let borderOpacity: CGFloat = 0.6
     private var barColor: NSColor = .systemYellow
     private var selectedColorName = "Yellow"
     private var fontReferenceSize: CGFloat = 22
-    private let defaults = UserDefaults.standard
+    private let settingsStore = SettingsStore()
 
     private let colorOptions: [(name: String, color: NSColor)] = [
         ("Yellow", .systemYellow),
@@ -150,21 +145,10 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func createWindow() {
-        let initialFrame = NSRect(x: 0, y: 0, width: 600, height: barHeight)
-        let overlayWindow = NSWindow(
-            contentRect: initialFrame,
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-
-        overlayWindow.isOpaque = false
-        overlayWindow.backgroundColor = .clear
-        overlayWindow.hasShadow = false
-        overlayWindow.level = .screenSaver
-        overlayWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        overlayWindow.ignoresMouseEvents = true
-        overlayWindow.isMovableByWindowBackground = false
+        let manager = OverlayWindowManager(barLevel: barWindowLevel)
+        manager.onScreenParametersChanged = { [weak self] in
+            self?.handleScreenParametersChanged()
+        }
 
         let barView = HighlightBarView(
             cornerRadius: barCornerRadius,
@@ -172,11 +156,13 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fillOpacity: barOpacity,
             borderOpacity: currentBorderOpacity()
         )
-        overlayWindow.contentView = barView
+        manager.barWindow.contentView = barView
+        manager.barWindow.orderFrontRegardless()
 
-        overlayWindow.orderFrontRegardless()
-        self.window = overlayWindow
+        self.windowManager = manager
         self.barView = barView
+
+        updateBarPosition()
     }
 
     private func startTracking() {
@@ -189,23 +175,23 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateBarPosition() {
-        guard let window = window else { return }
+        guard let window = windowManager?.barWindow else { return }
         let mouse = NSEvent.mouseLocation
 
-        let targetScreen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
-        guard let screen = targetScreen else { return }
+        guard let screen = BarGeometry.screen(containing: mouse) else { return }
 
-        let frame = screen.frame
-        let height = barHeight
-        let width = frame.width
-
-        var y = mouse.y - height / 2.0
-        y = max(frame.minY, min(y, frame.maxY - height))
-
-        let newFrame = NSRect(x: frame.minX, y: y, width: width, height: height)
+        let newFrame = BarGeometry.barFrame(forMouse: mouse, height: barHeight, on: screen)
         if window.frame != newFrame {
             window.setFrame(newFrame, display: true)
         }
+    }
+
+    // Re-clamp the bar after a resolution change or monitor plug/unplug. Because
+    // the cursor is always on a currently-attached screen, recomputing from the
+    // mouse position lands the bar on a valid display and never strands it.
+    private func handleScreenParametersChanged() {
+        guard !isBarHidden else { return }
+        updateBarPosition()
     }
 
     private func updateMenuState() {
@@ -269,16 +255,12 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func loadSettings() {
-        if let savedFontSize = defaults.object(forKey: DefaultsKey.fontReferenceSize) as? Double {
-            fontReferenceSize = clamped(CGFloat(savedFontSize), min: 10, max: 100)
-        }
+        let settings = settingsStore.load()
 
-        if let savedOpacity = defaults.object(forKey: DefaultsKey.barOpacity) as? Double {
-            barOpacity = clamped(CGFloat(savedOpacity), min: 0.10, max: 0.90)
-        }
+        fontReferenceSize = clamped(CGFloat(settings.fontReferenceSize), min: 10, max: 100)
+        barOpacity = clamped(CGFloat(settings.barOpacity), min: 0.10, max: 0.90)
 
-        if let savedColorName = defaults.string(forKey: DefaultsKey.colorName),
-           let match = colorOptions.first(where: { $0.name == savedColorName }) {
+        if let match = colorOptions.first(where: { $0.name == settings.colorName }) {
             selectedColorName = match.name
             barColor = match.color
         }
@@ -287,9 +269,12 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func saveSettings() {
-        defaults.set(Double(fontReferenceSize), forKey: DefaultsKey.fontReferenceSize)
-        defaults.set(Double(barOpacity), forKey: DefaultsKey.barOpacity)
-        defaults.set(selectedColorName, forKey: DefaultsKey.colorName)
+        let settings = Settings(
+            fontReferenceSize: Double(fontReferenceSize),
+            barOpacity: Double(barOpacity),
+            colorName: selectedColorName
+        )
+        settingsStore.save(settings)
     }
 
     private func makeAdjustableSliderMenuItem(
@@ -432,9 +417,9 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleBarVisibility() {
         isBarHidden.toggle()
         if isBarHidden {
-            window?.orderOut(nil)
+            windowManager?.barWindow.orderOut(nil)
         } else {
-            window?.orderFrontRegardless()
+            windowManager?.barWindow.orderFrontRegardless()
             updateBarPosition()
         }
         updateVisibilityMenuItem()
@@ -446,187 +431,6 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
-    }
-}
-
-final class ColorPickerMenuView: NSView {
-    var onHover: ((String?) -> Void)?
-    var onSelect: ((String) -> Void)?
-    var selectedColorName: String {
-        didSet {
-            needsDisplay = true
-        }
-    }
-
-    private let options: [(name: String, color: NSColor)]
-    private var hoverIndex: Int?
-    private var trackingAreaRef: NSTrackingArea?
-
-    private let swatchSize: CGFloat = 18
-    private let spacing: CGFloat = 12
-    private let horizontalInset: CGFloat = 10
-    private let verticalInset: CGFloat = 6
-
-    init(options: [(name: String, color: NSColor)], selectedColorName: String) {
-        self.options = options
-        self.selectedColorName = selectedColorName
-
-        let width = (horizontalInset * 2) + CGFloat(options.count) * swatchSize + CGFloat(max(0, options.count - 1)) * spacing
-        let height = swatchSize + (verticalInset * 2)
-        super.init(frame: NSRect(x: 0, y: 0, width: width, height: height))
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        window?.acceptsMouseMovedEvents = true
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingAreaRef {
-            removeTrackingArea(trackingAreaRef)
-        }
-
-        let options: NSTrackingArea.Options = [
-            .activeAlways,
-            .mouseEnteredAndExited,
-            .mouseMoved,
-            .inVisibleRect
-        ]
-        let trackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
-        addTrackingArea(trackingArea)
-        trackingAreaRef = trackingArea
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        updateHoverIndex(index(at: point))
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        updateHoverIndex(index(at: point))
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        updateHoverIndex(nil)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        guard let index = index(at: point) else { return }
-        selectedColorName = options[index].name
-        onSelect?(selectedColorName)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-
-        for index in options.indices {
-            let swatchRect = rectForSwatch(at: index)
-            let option = options[index]
-
-            let fillPath = NSBezierPath(ovalIn: swatchRect)
-            option.color.setFill()
-            fillPath.fill()
-
-            let borderPath = NSBezierPath(ovalIn: swatchRect)
-            NSColor.black.withAlphaComponent(0.25).setStroke()
-            borderPath.lineWidth = 1
-            borderPath.stroke()
-
-            if option.name == selectedColorName {
-                let selectedRect = swatchRect.insetBy(dx: -2, dy: -2)
-                let selectedPath = NSBezierPath(ovalIn: selectedRect)
-                NSColor.white.setStroke()
-                selectedPath.lineWidth = 2
-                selectedPath.stroke()
-            }
-
-            if index == hoverIndex {
-                let hoverRect = swatchRect.insetBy(dx: -4, dy: -4)
-                let hoverPath = NSBezierPath(ovalIn: hoverRect)
-                NSColor.labelColor.withAlphaComponent(0.8).setStroke()
-                hoverPath.lineWidth = 1.5
-                hoverPath.stroke()
-            }
-        }
-    }
-
-    private func rectForSwatch(at index: Int) -> NSRect {
-        let x = horizontalInset + CGFloat(index) * (swatchSize + spacing)
-        return NSRect(x: x, y: verticalInset, width: swatchSize, height: swatchSize)
-    }
-
-    private func index(at point: NSPoint) -> Int? {
-        for index in options.indices {
-            let hitRect = rectForSwatch(at: index).insetBy(dx: -4, dy: -4)
-            if hitRect.contains(point) {
-                return index
-            }
-        }
-        return nil
-    }
-
-    private func updateHoverIndex(_ index: Int?) {
-        guard hoverIndex != index else { return }
-        hoverIndex = index
-        if let index {
-            onHover?(options[index].name)
-        } else {
-            onHover?(nil)
-        }
-        needsDisplay = true
-    }
-}
-
-final class HighlightBarView: NSView {
-    private let cornerRadius: CGFloat
-    private var fillOpacity: CGFloat
-    private var borderOpacity: CGFloat
-    private var color: NSColor
-
-    init(cornerRadius: CGFloat, color: NSColor, fillOpacity: CGFloat, borderOpacity: CGFloat) {
-        self.cornerRadius = cornerRadius
-        self.color = color
-        self.fillOpacity = fillOpacity
-        self.borderOpacity = borderOpacity
-        super.init(frame: .zero)
-        applyAppearance()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override var isFlipped: Bool {
-        return true
-    }
-
-    private func applyAppearance() {
-        wantsLayer = true
-        guard let layer = layer else { return }
-        layer.backgroundColor = color.withAlphaComponent(fillOpacity).cgColor
-        layer.cornerRadius = cornerRadius
-        layer.borderColor = color.withAlphaComponent(borderOpacity).cgColor
-        layer.borderWidth = 1
-    }
-
-    func updateAppearance(color: NSColor, fillOpacity: CGFloat, borderOpacity: CGFloat) {
-        self.color = color
-        self.fillOpacity = fillOpacity
-        self.borderOpacity = borderOpacity
-        applyAppearance()
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        autoresizingMask = [.width, .height]
-        applyAppearance()
     }
 }
 
