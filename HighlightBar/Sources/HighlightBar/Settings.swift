@@ -12,18 +12,22 @@ struct Settings: Codable, Equatable {
     var barOpacity: Double = 0.35
     var colorName: String = "Yellow"
 
-    init() {}
+    // Lock mode (Phase 2). When locked the bar freezes at the anchor — the
+    // center point of its frame at the moment it was locked — instead of
+    // following the cursor. Stored in global screen points.
+    var isLocked: Bool = false
+    var lockedAnchorX: Double?
+    var lockedAnchorY: Double?
 
-    init(fontReferenceSize: Double, barOpacity: Double, colorName: String) {
-        self.fontReferenceSize = fontReferenceSize
-        self.barOpacity = barOpacity
-        self.colorName = colorName
-    }
+    init() {}
 
     private enum CodingKeys: String, CodingKey {
         case fontReferenceSize
         case barOpacity
         case colorName
+        case isLocked
+        case lockedAnchorX
+        case lockedAnchorY
     }
 
     init(from decoder: Decoder) throws {
@@ -32,6 +36,9 @@ struct Settings: Codable, Equatable {
         settings.fontReferenceSize = try container.decodeIfPresent(Double.self, forKey: .fontReferenceSize) ?? settings.fontReferenceSize
         settings.barOpacity = try container.decodeIfPresent(Double.self, forKey: .barOpacity) ?? settings.barOpacity
         settings.colorName = try container.decodeIfPresent(String.self, forKey: .colorName) ?? settings.colorName
+        settings.isLocked = try container.decodeIfPresent(Bool.self, forKey: .isLocked) ?? settings.isLocked
+        settings.lockedAnchorX = try container.decodeIfPresent(Double.self, forKey: .lockedAnchorX) ?? settings.lockedAnchorX
+        settings.lockedAnchorY = try container.decodeIfPresent(Double.self, forKey: .lockedAnchorY) ?? settings.lockedAnchorY
         self = settings
     }
 }

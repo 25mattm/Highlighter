@@ -38,7 +38,8 @@ open "dist/HighlightBar.app"
 - Transparency slider: adjust fill alpha from `10%` to `90%` with `-` and `+` buttons.
 - Color circles: choose color directly in the main dropdown. Hover previews the color before you click.
 - Show/Hide: toggle the bar with the global `⌘ + Shift + H` shortcut or the `Hide Bar` / `Show Bar` menu item.
-- Settings persistence: height reference, transparency, and color are remembered and restored on next launch.
+- Lock/Unlock: freeze the bar at its current spot with `⌘ + Shift + L` (or `Lock Bar Position`) so it stops following the mouse. While locked, nudge it with `⌘ + Shift + ↑` / `⌘ + Shift + ↓`. The `Keyboard Shortcuts` submenu lists them all.
+- Settings persistence: height reference, transparency, color, and lock state/position are remembered and restored on next launch.
 
 ## Multi-monitor
 

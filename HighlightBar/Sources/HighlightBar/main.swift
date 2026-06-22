@@ -14,8 +14,14 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var heightInfoItem: NSMenuItem?
     private var transparencyInfoItem: NSMenuItem?
     private var visibilityMenuItem: NSMenuItem?
-    private var hotKeyRef: EventHotKeyRef?
+    private var lockMenuItem: NSMenuItem?
+    private var hotKeyCenter: HotKeyCenter?
+    private var nudgeUpHotKey: UInt32?
+    private var nudgeDownHotKey: UInt32?
     private var isBarHidden = false
+    private var isLocked = false
+    private var lockedAnchorX: Double?
+    private var lockedAnchorY: Double?
     private var previewColorName: String?
 
     private var barHeight: CGFloat = 44
@@ -53,14 +59,12 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyAppearance()
         updateMenuState()
         startTracking()
-        registerGlobalHotKey()
+        setupHotKeys()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
-        if let hotKeyRef {
-            UnregisterEventHotKey(hotKeyRef)
-        }
+        hotKeyCenter?.unregisterAll()
     }
 
     private func setupStatusItem() {
@@ -125,6 +129,15 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
+        let lockItem = NSMenuItem(
+            title: "Lock Bar Position (⇧⌘L)",
+            action: #selector(toggleLock),
+            keyEquivalent: ""
+        )
+        lockItem.target = self
+        menu.addItem(lockItem)
+        self.lockMenuItem = lockItem
+
         let visibilityItem = NSMenuItem(
             title: "Hide Bar (⇧⌘H)",
             action: #selector(toggleBarVisibility),
@@ -133,6 +146,10 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         visibilityItem.target = self
         menu.addItem(visibilityItem)
         self.visibilityMenuItem = visibilityItem
+
+        menu.addItem(.separator())
+
+        menu.addItem(makeShortcutsMenuItem())
 
         menu.addItem(.separator())
 
@@ -176,14 +193,23 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateBarPosition() {
         guard let window = windowManager?.barWindow else { return }
-        let mouse = NSEvent.mouseLocation
+        let anchor = currentAnchor()
 
-        guard let screen = BarGeometry.screen(containing: mouse) else { return }
+        guard let screen = BarGeometry.screen(containing: anchor) else { return }
 
-        let newFrame = BarGeometry.barFrame(forMouse: mouse, height: barHeight, on: screen)
+        let newFrame = BarGeometry.barFrame(forMouse: anchor, height: barHeight, on: screen)
         if window.frame != newFrame {
             window.setFrame(newFrame, display: true)
         }
+    }
+
+    /// The point the bar is anchored to: the frozen lock anchor while locked,
+    /// otherwise the live cursor location.
+    private func currentAnchor() -> NSPoint {
+        if isLocked, let x = lockedAnchorX, let y = lockedAnchorY {
+            return NSPoint(x: x, y: y)
+        }
+        return NSEvent.mouseLocation
     }
 
     // Re-clamp the bar after a resolution change or monitor plug/unplug. Because
@@ -208,6 +234,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         fontSlider?.doubleValue = Double(fontReferenceSize)
         opacitySlider?.doubleValue = Double(barOpacity * 100)
         colorPickerView?.selectedColorName = selectedColorName
+        updateLockMenuItem()
     }
 
     private func applyAppearance() {
@@ -265,15 +292,23 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             barColor = match.color
         }
 
+        isLocked = settings.isLocked
+        lockedAnchorX = settings.lockedAnchorX
+        lockedAnchorY = settings.lockedAnchorY
+
         barHeight = computedBarHeight(fromFontReference: fontReferenceSize)
     }
 
+    // Serializes the complete current state. Every Settings field has a backing
+    // property here, so a load/save round-trip is lossless as settings grow.
     private func saveSettings() {
-        let settings = Settings(
-            fontReferenceSize: Double(fontReferenceSize),
-            barOpacity: Double(barOpacity),
-            colorName: selectedColorName
-        )
+        var settings = Settings()
+        settings.fontReferenceSize = Double(fontReferenceSize)
+        settings.barOpacity = Double(barOpacity)
+        settings.colorName = selectedColorName
+        settings.isLocked = isLocked
+        settings.lockedAnchorX = lockedAnchorX
+        settings.lockedAnchorY = lockedAnchorY
         settingsStore.save(settings)
     }
 
@@ -379,39 +414,108 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         clearColorPreview()
     }
 
-    // Registers a system-wide ⇧⌘H shortcut to show/hide the bar. Carbon's
-    // RegisterEventHotKey is used because it does not require Accessibility or
-    // Input Monitoring permission, so the shortcut works without an extra prompt.
-    private func registerGlobalHotKey() {
-        let signature: OSType = 0x4842_4B31 // "HBK1"
-        let hotKeyID = EventHotKeyID(signature: signature, id: 1)
-        var eventSpec = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: OSType(kEventHotKeyPressed)
-        )
+    // Registers the system-wide shortcuts via Carbon's RegisterEventHotKey (no
+    // Accessibility or Input Monitoring permission required, so no extra prompt).
+    // Per the minimal-hotkey decision, only show/hide, lock, and nudge are
+    // global; size/opacity/color stay on the menu's on-screen controls.
+    private func setupHotKeys() {
+        let center = HotKeyCenter()
+        center.register(keyCode: kVK_ANSI_H, modifiers: [.command, .shift]) { [weak self] in
+            self?.toggleBarVisibility()
+        }
+        center.register(keyCode: kVK_ANSI_L, modifiers: [.command, .shift]) { [weak self] in
+            self?.toggleLock()
+        }
+        hotKeyCenter = center
+        updateNudgeHotKeys()
+    }
 
-        InstallEventHandler(
-            GetApplicationEventTarget(),
-            { _, _, userData -> OSStatus in
-                guard let userData else { return OSStatus(eventNotHandledErr) }
-                let app = Unmanaged<HighlightBarApp>.fromOpaque(userData).takeUnretainedValue()
-                app.toggleBarVisibility()
-                return noErr
-            },
-            1,
-            &eventSpec,
-            Unmanaged.passUnretained(self).toOpaque(),
-            nil
-        )
+    // The nudge shortcuts (⇧⌘↑/↓) only do anything while the bar is locked, and
+    // if left always-registered they would shadow the system "select to
+    // start/end of document" shortcuts in every app. So they are grabbed only
+    // while locked and released as soon as the bar is unlocked.
+    private func updateNudgeHotKeys() {
+        guard let center = hotKeyCenter else { return }
+        if isLocked {
+            if nudgeUpHotKey == nil {
+                nudgeUpHotKey = center.register(keyCode: kVK_UpArrow, modifiers: [.command, .shift]) { [weak self] in
+                    self?.nudgeLockedBar(up: true)
+                }
+            }
+            if nudgeDownHotKey == nil {
+                nudgeDownHotKey = center.register(keyCode: kVK_DownArrow, modifiers: [.command, .shift]) { [weak self] in
+                    self?.nudgeLockedBar(up: false)
+                }
+            }
+        } else {
+            if let token = nudgeUpHotKey {
+                center.unregister(token)
+                nudgeUpHotKey = nil
+            }
+            if let token = nudgeDownHotKey {
+                center.unregister(token)
+                nudgeDownHotKey = nil
+            }
+        }
+    }
 
-        RegisterEventHotKey(
-            UInt32(kVK_ANSI_H),
-            UInt32(cmdKey | shiftKey),
-            hotKeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotKeyRef
-        )
+    @objc private func toggleLock() {
+        setLocked(!isLocked, persist: true)
+    }
+
+    private func setLocked(_ locked: Bool, persist: Bool) {
+        isLocked = locked
+        if locked, let frame = windowManager?.barWindow.frame {
+            // Freeze at exactly the bar's current center so it stays put.
+            lockedAnchorX = Double(frame.midX)
+            lockedAnchorY = Double(frame.midY)
+        }
+        if persist {
+            saveSettings()
+        }
+        updateNudgeHotKeys()
+        updateLockMenuItem()
+        updateBarPosition()
+    }
+
+    // Moves the locked bar by one bar-height. The clamped result is written back
+    // to the anchor so repeated nudges at a screen edge don't accumulate.
+    private func nudgeLockedBar(up: Bool) {
+        guard isLocked, let x = lockedAnchorX, let y = lockedAnchorY else { return }
+        let anchor = NSPoint(x: x, y: y)
+        guard let screen = BarGeometry.screen(containing: anchor) else { return }
+
+        let delta = up ? barHeight : -barHeight
+        let nudged = NSPoint(x: x, y: y + Double(delta))
+        let frame = BarGeometry.barFrame(forMouse: nudged, height: barHeight, on: screen)
+        lockedAnchorX = Double(frame.midX)
+        lockedAnchorY = Double(frame.midY)
+        saveSettings()
+        updateBarPosition()
+    }
+
+    private func updateLockMenuItem() {
+        lockMenuItem?.title = isLocked ? "Unlock Bar Position (⇧⌘L)" : "Lock Bar Position (⇧⌘L)"
+    }
+
+    // A submenu listing the global shortcuts, so they are discoverable without
+    // leaving the app. Items are informational only.
+    private func makeShortcutsMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Keyboard Shortcuts", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        let lines = [
+            "⇧⌘H — Show / hide bar",
+            "⇧⌘L — Lock / unlock position",
+            "⇧⌘↑ — Nudge up (when locked)",
+            "⇧⌘↓ — Nudge down (when locked)"
+        ]
+        for line in lines {
+            let lineItem = NSMenuItem(title: line, action: nil, keyEquivalent: "")
+            lineItem.isEnabled = false
+            submenu.addItem(lineItem)
+        }
+        item.submenu = submenu
+        return item
     }
 
     @objc private func toggleBarVisibility() {

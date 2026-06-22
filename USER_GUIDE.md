@@ -57,7 +57,12 @@ If SmartScreen warns:
 4. Show or hide the bar at any time:
 - Press `Ctrl + Shift + H` (Windows) or `⌘ + Shift + H` (macOS).
 - Or use `Hide Bar` / `Show Bar` in the menu.
-5. Quit from the same menu:
+5. Lock the bar in place (macOS):
+- Press `⌘ + Shift + L` (or `Lock Bar Position` in the menu) to freeze the bar where it is so it stops following the mouse. Press again to unlock.
+- While locked, nudge it up or down with `⌘ + Shift + ↑` / `⌘ + Shift + ↓`.
+- The lock state and locked position are remembered for next launch.
+- The macOS menu lists every shortcut under `Keyboard Shortcuts`.
+6. Quit from the same menu:
 - macOS: `Quit Highlight Bar`
 - Windows: `Quit Highlight Bar`
 
