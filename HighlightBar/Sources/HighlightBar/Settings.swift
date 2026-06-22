@@ -1,5 +1,27 @@
 import Foundation
 
+/// The top-level display mode. Drives what the bar/overlays show; persisted as
+/// its raw string.
+enum HighlightMode: String, Codable, CaseIterable {
+    case off
+    case barOnly
+    case barAndSpotlight
+    case screenTint
+
+    var menuTitle: String {
+        switch self {
+        case .off: return "Off"
+        case .barOnly: return "Bar only"
+        case .barAndSpotlight: return "Bar + spotlight"
+        case .screenTint: return "Screen tint"
+        }
+    }
+
+    var showsBar: Bool {
+        return self == .barOnly || self == .barAndSpotlight
+    }
+}
+
 /// The single source of truth for everything the user can configure. Persisted
 /// as JSON under one `UserDefaults` key so it can grow over the project's phases
 /// without scattering keys.
@@ -19,6 +41,14 @@ struct Settings: Codable, Equatable {
     var lockedAnchorX: Double?
     var lockedAnchorY: Double?
 
+    // Overlay modes (Phase 3). The mode plus per-mode color/opacity for the
+    // spotlight dim and the screen tint.
+    var mode: HighlightMode = .barOnly
+    var spotlightColorName: String = "Gray"
+    var spotlightOpacity: Double = 0.5
+    var tintColorName: String = "Yellow"
+    var tintOpacity: Double = 0.2
+
     init() {}
 
     private enum CodingKeys: String, CodingKey {
@@ -28,6 +58,11 @@ struct Settings: Codable, Equatable {
         case isLocked
         case lockedAnchorX
         case lockedAnchorY
+        case mode
+        case spotlightColorName
+        case spotlightOpacity
+        case tintColorName
+        case tintOpacity
     }
 
     init(from decoder: Decoder) throws {
@@ -39,6 +74,11 @@ struct Settings: Codable, Equatable {
         settings.isLocked = try container.decodeIfPresent(Bool.self, forKey: .isLocked) ?? settings.isLocked
         settings.lockedAnchorX = try container.decodeIfPresent(Double.self, forKey: .lockedAnchorX) ?? settings.lockedAnchorX
         settings.lockedAnchorY = try container.decodeIfPresent(Double.self, forKey: .lockedAnchorY) ?? settings.lockedAnchorY
+        settings.mode = try container.decodeIfPresent(HighlightMode.self, forKey: .mode) ?? settings.mode
+        settings.spotlightColorName = try container.decodeIfPresent(String.self, forKey: .spotlightColorName) ?? settings.spotlightColorName
+        settings.spotlightOpacity = try container.decodeIfPresent(Double.self, forKey: .spotlightOpacity) ?? settings.spotlightOpacity
+        settings.tintColorName = try container.decodeIfPresent(String.self, forKey: .tintColorName) ?? settings.tintColorName
+        settings.tintOpacity = try container.decodeIfPresent(Double.self, forKey: .tintOpacity) ?? settings.tintOpacity
         self = settings
     }
 }

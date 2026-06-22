@@ -18,11 +18,17 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var hotKeyCenter: HotKeyCenter?
     private var nudgeUpHotKey: UInt32?
     private var nudgeDownHotKey: UInt32?
-    private var isBarHidden = false
+    private var isHidden = false
     private var isLocked = false
     private var lockedAnchorX: Double?
     private var lockedAnchorY: Double?
     private var previewColorName: String?
+
+    private var overlayController: OverlayController?
+    private var overlayOpacitySlider: NSSlider?
+    private var overlayColorPickerView: ColorPickerMenuView?
+    private var overlayInfoItem: NSMenuItem?
+    private var modeMenuItems: [NSMenuItem] = []
 
     private var barHeight: CGFloat = 44
     private let barCornerRadius: CGFloat = 10
@@ -32,6 +38,13 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var barColor: NSColor = .systemYellow
     private var selectedColorName = "Yellow"
     private var fontReferenceSize: CGFloat = 22
+
+    private var mode: HighlightMode = .barOnly
+    private var spotlightColorName = "Gray"
+    private var spotlightOpacity: CGFloat = 0.5
+    private var tintColorName = "Yellow"
+    private var tintOpacity: CGFloat = 0.2
+
     private let settingsStore = SettingsStore()
 
     private let colorOptions: [(name: String, color: NSColor)] = [
@@ -57,6 +70,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusItem()
         createWindow()
         applyAppearance()
+        applyMode()
         updateMenuState()
         startTracking()
         setupHotKeys()
@@ -129,6 +143,10 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
+        menu.addItem(makeModeMenuItem())
+
+        menu.addItem(.separator())
+
         let lockItem = NSMenuItem(
             title: "Lock Bar Position (⇧⌘L)",
             action: #selector(toggleLock),
@@ -139,8 +157,8 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.lockMenuItem = lockItem
 
         let visibilityItem = NSMenuItem(
-            title: "Hide Bar (⇧⌘H)",
-            action: #selector(toggleBarVisibility),
+            title: "Hide Highlighter (⇧⌘H)",
+            action: #selector(toggleHidden),
             keyEquivalent: ""
         )
         visibilityItem.target = self
@@ -174,20 +192,35 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             borderOpacity: currentBorderOpacity()
         )
         manager.barWindow.contentView = barView
-        manager.barWindow.orderFrontRegardless()
 
         self.windowManager = manager
         self.barView = barView
+
+        // Overlays sit one level below the bar so the bar stays on top of them.
+        let overlayLevel = NSWindow.Level(rawValue: barWindowLevel.rawValue - 1)
+        overlayController = OverlayController(level: overlayLevel, cutoutCornerRadius: barCornerRadius)
 
         updateBarPosition()
     }
 
     private func startTracking() {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            self?.updateBarPosition()
+            self?.tick()
         }
         if let timer = timer {
             RunLoop.main.add(timer, forMode: .common)
+        }
+    }
+
+    // One frame of tracking: reposition the bar (when its mode shows it) and, in
+    // spotlight mode, move the cutout to follow it.
+    private func tick() {
+        guard !isHidden else { return }
+        if mode.showsBar {
+            updateBarPosition()
+        }
+        if mode == .barAndSpotlight {
+            overlayController?.updateSpotlight(barFrame: windowManager?.barWindow.frame ?? .zero)
         }
     }
 
@@ -212,12 +245,19 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return NSEvent.mouseLocation
     }
 
-    // Re-clamp the bar after a resolution change or monitor plug/unplug. Because
-    // the cursor is always on a currently-attached screen, recomputing from the
-    // mouse position lands the bar on a valid display and never strands it.
+    // Re-clamp the bar and rebuild overlays after a resolution change or monitor
+    // plug/unplug. Because the cursor is always on a currently-attached screen,
+    // recomputing from the mouse position lands the bar on a valid display and
+    // never strands it; overlays are rebuilt to cover the new screen layout.
     private func handleScreenParametersChanged() {
-        guard !isBarHidden else { return }
-        updateBarPosition()
+        guard !isHidden else { return }
+        if mode.showsBar {
+            updateBarPosition()
+        }
+        overlayController?.rebuildForCurrentScreens()
+        if mode == .barAndSpotlight {
+            overlayController?.updateSpotlight(barFrame: windowManager?.barWindow.frame ?? .zero)
+        }
     }
 
     private func updateMenuState() {
@@ -234,6 +274,12 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         fontSlider?.doubleValue = Double(fontReferenceSize)
         opacitySlider?.doubleValue = Double(barOpacity * 100)
         colorPickerView?.selectedColorName = selectedColorName
+
+        overlayOpacitySlider?.doubleValue = Double(activeOverlayOpacity * 100)
+        overlayColorPickerView?.selectedColorName = activeOverlayColorName
+        overlayInfoItem?.title = overlayInfoTitle()
+
+        updateModeMenuState()
         updateLockMenuItem()
     }
 
@@ -247,6 +293,177 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func currentBorderOpacity() -> CGFloat {
         return min(1.0, max(borderOpacity, barOpacity + 0.2))
+    }
+
+    // MARK: - Modes & overlays
+
+    private var spotlightColor: NSColor {
+        return colorOption(named: spotlightColorName)?.color ?? .systemGray
+    }
+
+    private var tintColor: NSColor {
+        return colorOption(named: tintColorName)?.color ?? .systemYellow
+    }
+
+    // The overlay controls (in the Mode submenu) edit whichever overlay the
+    // current mode uses: the tint in screen-tint mode, otherwise the spotlight.
+    private var overlayTargetIsTint: Bool {
+        return mode == .screenTint
+    }
+
+    private var activeOverlayOpacity: CGFloat {
+        get { overlayTargetIsTint ? tintOpacity : spotlightOpacity }
+        set {
+            if overlayTargetIsTint { tintOpacity = newValue } else { spotlightOpacity = newValue }
+        }
+    }
+
+    private var activeOverlayColorName: String {
+        get { overlayTargetIsTint ? tintColorName : spotlightColorName }
+        set {
+            if overlayTargetIsTint { tintColorName = newValue } else { spotlightColorName = newValue }
+        }
+    }
+
+    // Shows/hides the bar and overlays to match the current mode (and the master
+    // hidden toggle), rebuilding overlays when an overlay mode becomes active.
+    private func applyMode() {
+        if !isHidden && mode.showsBar {
+            windowManager?.barWindow.orderFrontRegardless()
+            updateBarPosition()
+        } else {
+            windowManager?.barWindow.orderOut(nil)
+        }
+
+        if isHidden {
+            overlayController?.hide()
+        } else {
+            switch mode {
+            case .barAndSpotlight:
+                overlayController?.show(style: .spotlight, color: spotlightColor, opacity: spotlightOpacity)
+                overlayController?.updateSpotlight(barFrame: windowManager?.barWindow.frame ?? .zero)
+            case .screenTint:
+                overlayController?.show(style: .tint, color: tintColor, opacity: tintOpacity)
+            case .off, .barOnly:
+                overlayController?.hide()
+            }
+        }
+
+        updateModeMenuState()
+        updateVisibilityMenuItem()
+    }
+
+    // Live-updates the active overlay's color/opacity without rebuilding windows.
+    private func applyOverlayAppearance() {
+        guard !isHidden else { return }
+        switch mode {
+        case .barAndSpotlight:
+            overlayController?.update(color: spotlightColor, opacity: spotlightOpacity)
+        case .screenTint:
+            overlayController?.update(color: tintColor, opacity: tintOpacity)
+        case .off, .barOnly:
+            break
+        }
+    }
+
+    @objc private func selectMode(_ sender: NSMenuItem) {
+        guard let newMode = sender.representedObject as? HighlightMode else { return }
+        mode = newMode
+        isHidden = false
+        saveSettings()
+        applyMode()
+        updateMenuState()
+    }
+
+    private func setOverlayOpacityPercent(_ percent: CGFloat) {
+        activeOverlayOpacity = clamped(percent / 100.0, min: 0.10, max: 0.90)
+        saveSettings()
+        updateMenuState()
+        applyOverlayAppearance()
+    }
+
+    @objc private func overlayOpacityChanged(_ sender: NSSlider) {
+        setOverlayOpacityPercent(CGFloat(sender.doubleValue))
+    }
+
+    @objc private func decreaseOverlayOpacity(_ sender: NSButton) {
+        setOverlayOpacityPercent((activeOverlayOpacity * 100) - 5)
+    }
+
+    @objc private func increaseOverlayOpacity(_ sender: NSButton) {
+        setOverlayOpacityPercent((activeOverlayOpacity * 100) + 5)
+    }
+
+    private func selectOverlayColor(_ colorName: String) {
+        guard colorOption(named: colorName) != nil else { return }
+        activeOverlayColorName = colorName
+        saveSettings()
+        updateMenuState()
+        applyOverlayAppearance()
+    }
+
+    private func updateModeMenuState() {
+        for item in modeMenuItems {
+            guard let itemMode = item.representedObject as? HighlightMode else { continue }
+            item.state = (itemMode == mode) ? .on : .off
+        }
+    }
+
+    private func overlayInfoTitle() -> String {
+        let label = overlayTargetIsTint ? "Tint" : "Spotlight"
+        return String(format: "%@ opacity: %.0f%%", label, activeOverlayOpacity * 100)
+    }
+
+    private func makeModeMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Mode", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+
+        modeMenuItems = []
+        for highlightMode in HighlightMode.allCases {
+            let modeItem = NSMenuItem(
+                title: highlightMode.menuTitle,
+                action: #selector(selectMode(_:)),
+                keyEquivalent: ""
+            )
+            modeItem.target = self
+            modeItem.representedObject = highlightMode
+            submenu.addItem(modeItem)
+            modeMenuItems.append(modeItem)
+        }
+
+        submenu.addItem(.separator())
+
+        let overlayInfo = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        overlayInfo.isEnabled = false
+        submenu.addItem(overlayInfo)
+        self.overlayInfoItem = overlayInfo
+
+        let (overlayOpacityItem, overlaySlider) = makeAdjustableSliderMenuItem(
+            value: Double(activeOverlayOpacity * 100),
+            minValue: 10,
+            maxValue: 90,
+            sliderAction: #selector(overlayOpacityChanged(_:)),
+            decrementAction: #selector(decreaseOverlayOpacity(_:)),
+            incrementAction: #selector(increaseOverlayOpacity(_:))
+        )
+        submenu.addItem(overlayOpacityItem)
+        self.overlayOpacitySlider = overlaySlider
+
+        let overlayColorLabel = NSMenuItem(title: "Overlay Color", action: nil, keyEquivalent: "")
+        overlayColorLabel.isEnabled = false
+        submenu.addItem(overlayColorLabel)
+
+        let overlayColorItem = NSMenuItem()
+        let overlayPicker = ColorPickerMenuView(options: colorOptions, selectedColorName: activeOverlayColorName)
+        overlayPicker.onSelect = { [weak self] colorName in
+            self?.selectOverlayColor(colorName)
+        }
+        overlayColorItem.view = overlayPicker
+        submenu.addItem(overlayColorItem)
+        self.overlayColorPickerView = overlayPicker
+
+        item.submenu = submenu
+        return item
     }
 
     private func colorOption(named colorName: String) -> (name: String, color: NSColor)? {
@@ -296,6 +513,16 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lockedAnchorX = settings.lockedAnchorX
         lockedAnchorY = settings.lockedAnchorY
 
+        mode = settings.mode
+        if colorOption(named: settings.spotlightColorName) != nil {
+            spotlightColorName = settings.spotlightColorName
+        }
+        spotlightOpacity = clamped(CGFloat(settings.spotlightOpacity), min: 0.10, max: 0.90)
+        if colorOption(named: settings.tintColorName) != nil {
+            tintColorName = settings.tintColorName
+        }
+        tintOpacity = clamped(CGFloat(settings.tintOpacity), min: 0.10, max: 0.90)
+
         barHeight = computedBarHeight(fromFontReference: fontReferenceSize)
     }
 
@@ -309,6 +536,11 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.isLocked = isLocked
         settings.lockedAnchorX = lockedAnchorX
         settings.lockedAnchorY = lockedAnchorY
+        settings.mode = mode
+        settings.spotlightColorName = spotlightColorName
+        settings.spotlightOpacity = Double(spotlightOpacity)
+        settings.tintColorName = tintColorName
+        settings.tintOpacity = Double(tintOpacity)
         settingsStore.save(settings)
     }
 
@@ -421,7 +653,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setupHotKeys() {
         let center = HotKeyCenter()
         center.register(keyCode: kVK_ANSI_H, modifiers: [.command, .shift]) { [weak self] in
-            self?.toggleBarVisibility()
+            self?.toggleHidden()
         }
         center.register(keyCode: kVK_ANSI_L, modifiers: [.command, .shift]) { [weak self] in
             self?.toggleLock()
@@ -504,7 +736,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem(title: "Keyboard Shortcuts", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
         let lines = [
-            "⇧⌘H — Show / hide bar",
+            "⇧⌘H — Show / hide highlighter",
             "⇧⌘L — Lock / unlock position",
             "⇧⌘↑ — Nudge up (when locked)",
             "⇧⌘↓ — Nudge down (when locked)"
@@ -518,19 +750,15 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
-    @objc private func toggleBarVisibility() {
-        isBarHidden.toggle()
-        if isBarHidden {
-            windowManager?.barWindow.orderOut(nil)
-        } else {
-            windowManager?.barWindow.orderFrontRegardless()
-            updateBarPosition()
-        }
-        updateVisibilityMenuItem()
+    // ⇧⌘H hides/shows the whole highlighter (bar and any overlay) so it can be
+    // dismissed instantly when it would get in the way, then brought back.
+    @objc private func toggleHidden() {
+        isHidden.toggle()
+        applyMode()
     }
 
     private func updateVisibilityMenuItem() {
-        visibilityMenuItem?.title = isBarHidden ? "Show Bar (⇧⌘H)" : "Hide Bar (⇧⌘H)"
+        visibilityMenuItem?.title = isHidden ? "Show Highlighter (⇧⌘H)" : "Hide Highlighter (⇧⌘H)"
     }
 
     @objc private func quit() {

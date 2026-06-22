@@ -66,6 +66,23 @@ If SmartScreen warns:
 - macOS: `Quit Highlight Bar`
 - Windows: `Quit Highlight Bar`
 
+## Display Modes (macOS)
+
+Open the menu-bar `HB` menu and choose `Mode`:
+
+- **Off** — nothing is shown.
+- **Bar only** — just the reading bar (the default).
+- **Bar + spotlight** — dims the whole screen except a clear slot at the bar,
+  which follows your cursor. Good for cutting visual clutter and focusing on one
+  line at a time.
+- **Screen tint** — a uniform colored wash over everything, for visual-stress
+  relief.
+
+Under `Mode` you can also set the overlay's **color** and **opacity** (remembered
+separately for the spotlight and the tint). Overlays cover every display and stay
+fully click-through, so you can keep working underneath them. `⌘ + Shift + H`
+hides or shows the whole highlighter — bar and overlay together.
+
 ## Update To A New Version
 
 1. Download the latest zip from the latest release page.

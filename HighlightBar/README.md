@@ -37,9 +37,10 @@ open "dist/HighlightBar.app"
   The app maps it to bar height with `height = 2 x font-size`.
 - Transparency slider: adjust fill alpha from `10%` to `90%` with `-` and `+` buttons.
 - Color circles: choose color directly in the main dropdown. Hover previews the color before you click.
-- Show/Hide: toggle the bar with the global `⌘ + Shift + H` shortcut or the `Hide Bar` / `Show Bar` menu item.
+- Show/Hide: toggle the whole highlighter (bar + any overlay) with the global `⌘ + Shift + H` shortcut or the `Hide Highlighter` / `Show Highlighter` menu item.
 - Lock/Unlock: freeze the bar at its current spot with `⌘ + Shift + L` (or `Lock Bar Position`) so it stops following the mouse. While locked, nudge it with `⌘ + Shift + ↑` / `⌘ + Shift + ↓`. The `Keyboard Shortcuts` submenu lists them all.
-- Settings persistence: height reference, transparency, color, and lock state/position are remembered and restored on next launch.
+- Mode: `Mode` submenu picks `Off` / `Bar only` / `Bar + spotlight` / `Screen tint`. Spotlight dims everything except a clear slot at the bar (follows the cursor); screen tint is a uniform colored wash. Overlay color and opacity are adjustable there and cover every display, staying fully click-through.
+- Settings persistence: height reference, transparency, color, lock state/position, mode, and per-mode overlay color/opacity are remembered and restored on next launch.
 
 ## Multi-monitor
 
