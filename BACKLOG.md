@@ -47,9 +47,10 @@ Revisit when monetization is on the table. Two parts:
 
 ## 3. macOS TODOs (hit during this pass)
 
-- **Overlay palette:** the spotlight dim reuses the shared 6-color palette; the
-  darkest option is `Gray`. A dedicated dark/black option would dim more
-  effectively. (Would also touch the shared color list.)
+- **Overlay palette:** ~~the spotlight dim's darkest preset is `Gray`~~ — resolved
+  by v3 custom colors (`Custom Overlay Color…` can pick true black for a stronger
+  dim). The 6 presets still skew light; a darker preset could still be a nice
+  default.
 - **App icon:** the menu-bar item shows the text `HB` and the bundle has no real
   app icon (`CFBundleIconFile`). Add an icon set for the `.app`.
 - **Sparkle appcast hosting:** `SUFeedURL` defaults to a GitHub Pages URL that
@@ -66,3 +67,53 @@ Revisit when monetization is on the table. Two parts:
 - **No automated tests:** the SPM package has no test target. `BarGeometry`,
   `Settings` (Codable round-trip/migration), and `ProfileStore` are the
   most unit-testable seams if/when tests are added.
+
+## 4. v3 feature ideas (competitive scan, June 2026)
+
+**Guiding principle: accessibility is the priority.** Highlight Bar is first a
+reading aid for dyslexia, ADHD, low vision, and visual stress. Reader-serving
+features come first; presentation/cursor-highlight features are an *adjacent*
+track that can help fund the app but must not displace the mission or crowd the
+UI. Keep the accessibility core free, click-through, no-permission, and local.
+
+Landscape: closest direct competitor is **Overdys** (Mac App Store, same
+ruler/line/overlay model). Adjacent markets: focus-dimmers (HazeOver ~$5 once,
+Blurred free) and cursor-highlighters (Mouseposé ~$10/yr, Presentify ~$8/yr,
+Presenter Pointer $9.99 once). Reading/tint aids trend free–cheap. Our
+differentiator: few apps combine reading-guide + focus-dim + cursor-highlight,
+cursor-following across multiple monitors, scroll/keyboard tracking, profiles,
+and a no-permission, fully click-through overlay.
+
+### Done (v3 so far, on `app-store`)
+- Custom colors via NSColorPanel (bar + overlays) — precise visual-stress tints.
+- Per-app auto-enable (NSWorkspace, no permission).
+
+### Accessibility-first (do next, rough priority order)
+- **Read-aloud / text-to-speech** of selected text — high impact for dyslexia /
+  low vision. Needs the selected text (Services / Accessibility) → opt-in.
+- **Caret-follow tracking** — bar follows the text cursor while typing/reading;
+  big for dyslexia when writing. Accessibility API → opt-in.
+- **Larger / higher-contrast options** — bigger max bar size, bolder border,
+  higher max opacity; review low-vision-friendly defaults.
+- **Scheduled / automatic tint** — visual-stress relief on a schedule or per app.
+- **Peek hotkey** (hold-to-hide), **custom hotkey remapping**, **crosshair**
+  (H+V together) — all no-permission; improve control accessibility.
+- **Reading-window variants** — dim above/below the active line, or a
+  double-line bracket around it.
+
+### Adjacent / funding track (secondary — must not displace the above)
+- Radial/circle spotlight cutout + click ripple — opens the presenter market
+  (Mouseposé/Presentify) and reuses the overlay engine; no permission.
+- Keystroke display (Input Monitoring → opt-in).
+- HazeOver-style "focus active window" dimming (Accessibility → opt-in).
+
+### Permission posture
+Mouse tracking and every current feature stay permission-free. Anything needing
+a TCC permission (read-aloud, caret-follow, keystroke display, focus-window) is
+strictly opt-in with a clear explanation, mirroring the keyboard-tracking flow.
+
+### Monetization mapping (ties to §2; revisit only when monetizing)
+- Free (the mission): bar, size/color/opacity, custom colors, screen tint, basic
+  profiles, per-app auto-enable — the accessibility core stays free.
+- Possible paid/pro: spotlight (incl. radial), the presentation pack, custom
+  profiles. Category pricing → low one-time (~$5–10) or small sub (~$8–10/yr).
