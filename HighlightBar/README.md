@@ -48,9 +48,10 @@ open "dist/HighlightBar.app"
 - Shape / Orientation: `Shape` switches between a thick `Ruler (band)` and a thin `Line`; `Orientation` switches between a horizontal band and a vertical column that follows the cursor's X.
 - Tracking: `Tracking` drives the bar by `Mouse` (default, no permission), `Scroll wheel` (no permission), or `Keyboard (arrows)` (opt-in; needs Input Monitoring, falls back to Mouse).
 - Profiles: `Profiles` applies a full settings bundle in one tap — built-ins `Dyslexia`, `ADHD / Focus`, `Low vision`, plus `Save Current as…` / `Delete Saved Profile` for your own.
+- Auto-Enable in Apps: `Auto-Enable in Apps` shows the highlighter only while chosen apps are frontmost (`Only in Selected Apps` + `Add an App…`); no permission needed (uses `NSWorkspace`).
 - Launch at Login: toggle to start Highlight Bar automatically at login (via `SMAppService`).
 - Welcome / Updates: `Show Welcome…` re-opens the first-run guide; `Check for Updates…` is an opt-in Sparkle check (no automatic background checks).
-- Settings persistence: size reference, transparency, color, lock state/position, mode, per-mode overlay color/opacity, shape, orientation, tracking source, saved profiles, last-applied profile, and the launch-at-login / onboarding flags are remembered and restored on next launch.
+- Settings persistence: size reference, transparency, color (preset or custom), lock state/position, mode, per-mode overlay color/opacity, shape, orientation, tracking source, saved profiles, last-applied profile, the per-app auto-enable list, and the launch-at-login / onboarding flags are remembered and restored on next launch.
 
 ## Multi-monitor
 

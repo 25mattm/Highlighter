@@ -109,6 +109,19 @@ From the `HB` menu:
     Monitoring** permission; Highlight Bar asks for it and stays on Mouse until
     you grant access.
 
+## Auto-Enable in Apps (macOS)
+
+`HB` menu → `Auto-Enable in Apps` makes the highlighter show only while certain
+apps are frontmost:
+
+- Turn on **Only in Selected Apps**.
+- **Add an App…** to choose where it should be active (e.g. Safari, Preview,
+  Books); it hides automatically everywhere else.
+- Remove an app from its submenu.
+
+Manual show/hide (`⌘ + Shift + H`) still works on top of this. No permission is
+needed — it just notices which app is in front.
+
 ## Profiles (macOS)
 
 `HB` menu → `Profiles` applies a whole bundle of settings in one tap:

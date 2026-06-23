@@ -2,6 +2,7 @@ import AppKit
 import Carbon.HIToolbox
 import CoreGraphics
 import ServiceManagement
+import UniformTypeIdentifiers
 
 final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static var retainedDelegate: HighlightBarApp?
@@ -21,6 +22,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var nudgeUpHotKey: UInt32?
     private var nudgeDownHotKey: UInt32?
     private var isHidden = false
+    private var autoSuppressed = false
     private var isLocked = false
     private var lockedAnchorX: Double?
     private var lockedAnchorY: Double?
@@ -72,6 +74,18 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var launchAtLogin = false
     private var hasSeenOnboarding = false
 
+    private var perAppEnabled = false
+    private var enabledBundleIDs: [String] = []
+    private var perAppSubmenu: NSMenu?
+    private var perAppToggleItem: NSMenuItem?
+    private var appActivationObserver: NSObjectProtocol?
+
+    // The highlighter is hidden if the user toggled it off (⇧⌘H) or per-app
+    // auto-enable is suppressing it for the current frontmost app.
+    private var effectivelyHidden: Bool {
+        return isHidden || autoSuppressed
+    }
+
     private let colorOptions: [(name: String, color: NSColor)] = [
         ("Yellow", .systemYellow),
         ("Green", .systemGreen),
@@ -94,6 +108,8 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loadSettings()
         setupStatusItem()
         createWindow()
+        setupAppActivationObserver()
+        autoSuppressed = currentlySuppressed()
         applyAppearance()
         applyMode()
         applyTrackingSource()
@@ -107,6 +123,9 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         timer?.invalidate()
         hotKeyCenter?.unregisterAll()
         removeEventMonitors()
+        if let appActivationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(appActivationObserver)
+        }
     }
 
     private func setupStatusItem() {
@@ -187,6 +206,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(makeModeMenuItem())
         menu.addItem(makeTrackingMenuItem())
+        menu.addItem(makePerAppMenuItem())
 
         menu.addItem(.separator())
 
@@ -273,7 +293,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // One frame of tracking: reposition the bar (when its mode shows it) and, in
     // spotlight mode, move the cutout to follow it.
     private func tick() {
-        guard !isHidden else { return }
+        guard !effectivelyHidden else { return }
         if mode.showsBar {
             updateBarPosition()
         }
@@ -330,7 +350,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // recomputing from the mouse position lands the bar on a valid display and
     // never strands it; overlays are rebuilt to cover the new screen layout.
     private func handleScreenParametersChanged() {
-        guard !isHidden else { return }
+        guard !effectivelyHidden else { return }
         if mode.showsBar {
             updateBarPosition()
         }
@@ -365,6 +385,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateRadioState(trackingMenuItems, matching: trackingSource)
         updateProfilesMenuState()
         updateLaunchAtLoginMenuItem()
+        perAppToggleItem?.state = perAppEnabled ? .on : .off
         updateLockMenuItem()
     }
 
@@ -432,14 +453,14 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Shows/hides the bar and overlays to match the current mode (and the master
     // hidden toggle), rebuilding overlays when an overlay mode becomes active.
     private func applyMode() {
-        if !isHidden && mode.showsBar {
+        if !effectivelyHidden && mode.showsBar {
             windowManager?.barWindow.orderFrontRegardless()
             updateBarPosition()
         } else {
             windowManager?.barWindow.orderOut(nil)
         }
 
-        if isHidden {
+        if effectivelyHidden {
             overlayController?.hide()
         } else {
             switch mode {
@@ -459,7 +480,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // Live-updates the active overlay's color/opacity without rebuilding windows.
     private func applyOverlayAppearance() {
-        guard !isHidden else { return }
+        guard !effectivelyHidden else { return }
         switch mode {
         case .barAndSpotlight:
             overlayController?.update(color: spotlightColor, opacity: spotlightOpacity)
@@ -611,7 +632,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func refreshSpotlightIfNeeded() {
-        guard mode == .barAndSpotlight, !isHidden else { return }
+        guard mode == .barAndSpotlight, !effectivelyHidden else { return }
         overlayController?.updateSpotlight(barFrame: windowManager?.barWindow.frame ?? .zero)
     }
 
@@ -718,7 +739,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handleScroll(_ event: NSEvent) {
-        guard trackingSource == .scroll, !isHidden, !isLocked else { return }
+        guard trackingSource == .scroll, !effectivelyHidden, !isLocked else { return }
         switch barOrientation {
         case .horizontal: trackedPoint.y += event.scrollingDeltaY
         case .vertical:   trackedPoint.x += event.scrollingDeltaY
@@ -747,7 +768,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handleKey(_ event: NSEvent) {
-        guard trackingSource == .keyboard, !isHidden, !isLocked else { return }
+        guard trackingSource == .keyboard, !effectivelyHidden, !isLocked else { return }
         let step = currentThickness()
         switch Int(event.keyCode) {
         case kVK_UpArrow: trackedPoint.y += step
@@ -955,6 +976,122 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updaterController.checkForUpdates()
     }
 
+    // MARK: - Per-app auto-enable
+
+    private func setupAppActivationObserver() {
+        appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateAutoSuppression()
+        }
+    }
+
+    // Whether per-app rules say to hide right now, based on the frontmost app.
+    private func currentlySuppressed() -> Bool {
+        guard perAppEnabled, !enabledBundleIDs.isEmpty else { return false }
+        guard let frontID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return true }
+        // Our own activation (e.g. opening the color panel) shouldn't flip state.
+        if frontID == Bundle.main.bundleIdentifier { return autoSuppressed }
+        return !enabledBundleIDs.contains(frontID)
+    }
+
+    @objc private func updateAutoSuppression() {
+        let newValue = currentlySuppressed()
+        guard newValue != autoSuppressed else { return }
+        autoSuppressed = newValue
+        applyMode()
+    }
+
+    @objc private func togglePerApp() {
+        perAppEnabled.toggle()
+        saveSettings()
+        rebuildPerAppSubmenu()
+        updateAutoSuppression()
+    }
+
+    @objc private func addEnabledApp() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.prompt = "Add"
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK,
+              let url = panel.url,
+              let bundleID = Bundle(url: url)?.bundleIdentifier else { return }
+        guard !enabledBundleIDs.contains(bundleID) else { return }
+        enabledBundleIDs.append(bundleID)
+        saveSettings()
+        rebuildPerAppSubmenu()
+        updateAutoSuppression()
+    }
+
+    @objc private func removeEnabledApp(_ sender: NSMenuItem) {
+        guard let bundleID = sender.representedObject as? String else { return }
+        enabledBundleIDs.removeAll { $0 == bundleID }
+        saveSettings()
+        rebuildPerAppSubmenu()
+        updateAutoSuppression()
+    }
+
+    private func appName(for bundleID: String) -> String {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            return url.deletingPathExtension().lastPathComponent
+        }
+        return bundleID
+    }
+
+    private func makePerAppMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Auto-Enable in Apps", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        item.submenu = submenu
+        perAppSubmenu = submenu
+        rebuildPerAppSubmenu()
+        return item
+    }
+
+    // Repopulates the per-app submenu: a toggle, the chosen apps (each with a
+    // Remove subitem), and an Add entry.
+    private func rebuildPerAppSubmenu() {
+        guard let submenu = perAppSubmenu else { return }
+        submenu.removeAllItems()
+
+        let toggle = NSMenuItem(title: "Only in Selected Apps", action: #selector(togglePerApp), keyEquivalent: "")
+        toggle.target = self
+        toggle.state = perAppEnabled ? .on : .off
+        submenu.addItem(toggle)
+        perAppToggleItem = toggle
+
+        submenu.addItem(.separator())
+
+        if enabledBundleIDs.isEmpty {
+            let empty = NSMenuItem(title: "No apps added", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            submenu.addItem(empty)
+        } else {
+            for bundleID in enabledBundleIDs {
+                let appItem = NSMenuItem(title: appName(for: bundleID), action: nil, keyEquivalent: "")
+                let appSubmenu = NSMenu()
+                let remove = NSMenuItem(title: "Remove", action: #selector(removeEnabledApp(_:)), keyEquivalent: "")
+                remove.target = self
+                remove.representedObject = bundleID
+                appSubmenu.addItem(remove)
+                appItem.submenu = appSubmenu
+                submenu.addItem(appItem)
+            }
+        }
+
+        submenu.addItem(.separator())
+
+        let add = NSMenuItem(title: "Add an App…", action: #selector(addEnabledApp), keyEquivalent: "")
+        add.target = self
+        submenu.addItem(add)
+    }
+
     private func colorOption(named colorName: String) -> (name: String, color: NSColor)? {
         return colorOptions.first(where: { $0.name == colorName })
     }
@@ -1023,6 +1160,8 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         launchAtLogin = settings.launchAtLogin
         hasSeenOnboarding = settings.hasSeenOnboarding
+        perAppEnabled = settings.perAppEnabled
+        enabledBundleIDs = settings.enabledBundleIDs
     }
 
     // Serializes the complete current state. Every Settings field has a backing
@@ -1045,6 +1184,8 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.trackingSource = trackingSource
         settings.launchAtLogin = launchAtLogin
         settings.hasSeenOnboarding = hasSeenOnboarding
+        settings.perAppEnabled = perAppEnabled
+        settings.enabledBundleIDs = enabledBundleIDs
         settingsStore.save(settings)
     }
 

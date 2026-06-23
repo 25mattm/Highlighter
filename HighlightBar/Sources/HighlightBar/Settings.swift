@@ -102,6 +102,11 @@ struct Settings: Codable, Equatable {
     var launchAtLogin: Bool = false
     var hasSeenOnboarding: Bool = false
 
+    // Per-app auto-enable (v3). When on, the highlighter shows only while one of
+    // these apps (by bundle id) is frontmost.
+    var perAppEnabled: Bool = false
+    var enabledBundleIDs: [String] = []
+
     init() {}
 
     private enum CodingKeys: String, CodingKey {
@@ -121,6 +126,8 @@ struct Settings: Codable, Equatable {
         case trackingSource
         case launchAtLogin
         case hasSeenOnboarding
+        case perAppEnabled
+        case enabledBundleIDs
     }
 
     init(from decoder: Decoder) throws {
@@ -142,6 +149,8 @@ struct Settings: Codable, Equatable {
         settings.trackingSource = try container.decodeIfPresent(TrackingSource.self, forKey: .trackingSource) ?? settings.trackingSource
         settings.launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? settings.launchAtLogin
         settings.hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? settings.hasSeenOnboarding
+        settings.perAppEnabled = try container.decodeIfPresent(Bool.self, forKey: .perAppEnabled) ?? settings.perAppEnabled
+        settings.enabledBundleIDs = try container.decodeIfPresent([String].self, forKey: .enabledBundleIDs) ?? settings.enabledBundleIDs
         self = settings
     }
 }
