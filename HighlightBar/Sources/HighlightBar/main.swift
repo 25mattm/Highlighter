@@ -67,6 +67,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private let updaterController = UpdaterController()
     private let onboardingWindow = OnboardingWindow()
+    private let colorPanel = ColorPanelController()
     private var launchAtLoginMenuItem: NSMenuItem?
     private var launchAtLogin = false
     private var hasSeenOnboarding = false
@@ -177,6 +178,10 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         colorPickerItem.view = colorPickerView
         menu.addItem(colorPickerItem)
         self.colorPickerView = colorPickerView
+
+        let customColorItem = NSMenuItem(title: "Custom Color…", action: #selector(pickCustomBarColor), keyEquivalent: "")
+        customColorItem.target = self
+        menu.addItem(customColorItem)
 
         menu.addItem(.separator())
 
@@ -386,11 +391,22 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Modes & overlays
 
     private var spotlightColor: NSColor {
-        return colorOption(named: spotlightColorName)?.color ?? .systemGray
+        return resolveColor(spotlightColorName)
     }
 
     private var tintColor: NSColor {
-        return colorOption(named: tintColorName)?.color ?? .systemYellow
+        return resolveColor(tintColorName)
+    }
+
+    // A color "spec" is either a preset name ("Yellow") or a custom "#RRGGBB".
+    private func resolveColor(_ spec: String) -> NSColor {
+        if let custom = NSColor.fromHexSpec(spec) { return custom }
+        if let preset = colorOption(named: spec) { return preset.color }
+        return .systemYellow
+    }
+
+    private func isValidColorSpec(_ spec: String) -> Bool {
+        return NSColor.fromHexSpec(spec) != nil || colorOption(named: spec) != nil
     }
 
     // The overlay controls (in the Mode submenu) edit whichever overlay the
@@ -484,7 +500,17 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func selectOverlayColor(_ colorName: String) {
         guard colorOption(named: colorName) != nil else { return }
-        activeOverlayColorName = colorName
+        setOverlayColorSpec(colorName)
+    }
+
+    @objc private func pickCustomOverlayColor() {
+        colorPanel.present(initial: resolveColor(activeOverlayColorName)) { [weak self] color in
+            self?.setOverlayColorSpec(color.toHexSpec())
+        }
+    }
+
+    private func setOverlayColorSpec(_ spec: String) {
+        activeOverlayColorName = spec
         saveSettings()
         updateMenuState()
         applyOverlayAppearance()
@@ -555,6 +581,10 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         overlayColorItem.view = overlayPicker
         submenu.addItem(overlayColorItem)
         self.overlayColorPickerView = overlayPicker
+
+        let overlayCustomItem = NSMenuItem(title: "Custom Overlay Color…", action: #selector(pickCustomOverlayColor), keyEquivalent: "")
+        overlayCustomItem.target = self
+        submenu.addItem(overlayCustomItem)
 
         item.submenu = submenu
         return item
@@ -968,9 +998,9 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         fontReferenceSize = clamped(CGFloat(settings.fontReferenceSize), min: 10, max: 100)
         barOpacity = clamped(CGFloat(settings.barOpacity), min: 0.10, max: 0.90)
 
-        if let match = colorOption(named: settings.colorName) {
-            selectedColorName = match.name
-            barColor = match.color
+        if isValidColorSpec(settings.colorName) {
+            selectedColorName = settings.colorName
+            barColor = resolveColor(settings.colorName)
         }
 
         isLocked = settings.isLocked
@@ -978,11 +1008,11 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lockedAnchorY = settings.lockedAnchorY
 
         mode = settings.mode
-        if colorOption(named: settings.spotlightColorName) != nil {
+        if isValidColorSpec(settings.spotlightColorName) {
             spotlightColorName = settings.spotlightColorName
         }
         spotlightOpacity = clamped(CGFloat(settings.spotlightOpacity), min: 0.10, max: 0.90)
-        if colorOption(named: settings.tintColorName) != nil {
+        if isValidColorSpec(settings.tintColorName) {
             tintColorName = settings.tintColorName
         }
         tintOpacity = clamped(CGFloat(settings.tintOpacity), min: 0.10, max: 0.90)
@@ -1103,13 +1133,20 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func selectColorNamed(_ colorName: String, persist: Bool) {
         guard let match = colorOption(named: colorName) else { return }
+        applyBarColor(spec: match.name, color: match.color)
+    }
 
-        selectedColorName = match.name
-        barColor = match.color
-        previewColorName = nil
-        if persist {
-            saveSettings()
+    @objc private func pickCustomBarColor() {
+        colorPanel.present(initial: barColor) { [weak self] color in
+            self?.applyBarColor(spec: color.toHexSpec(), color: color)
         }
+    }
+
+    private func applyBarColor(spec: String, color: NSColor) {
+        selectedColorName = spec
+        barColor = color
+        previewColorName = nil
+        saveSettings()
         updateMenuState()
         applyAppearance()
     }

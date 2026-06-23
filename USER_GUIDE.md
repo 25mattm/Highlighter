@@ -83,6 +83,17 @@ separately for the spotlight and the tint). Overlays cover every display and sta
 fully click-through, so you can keep working underneath them. `⌘ + Shift + H`
 hides or shows the whole highlighter — bar and overlay together.
 
+## Colors (macOS)
+
+Beyond the preset swatches, every color can be **any** color you like:
+
+- **Custom Color…** (under the bar's color swatches) sets the bar to a custom color.
+- **Custom Overlay Color…** (in the `Mode` submenu) does the same for the active
+  overlay (spotlight or tint).
+
+Both open the macOS color picker — handy for matching a specific tint that eases
+visual stress. Custom colors are remembered like the presets.
+
 ## Shape, Orientation & Tracking (macOS)
 
 From the `HB` menu:
