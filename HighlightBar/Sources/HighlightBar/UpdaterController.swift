@@ -8,7 +8,7 @@ import Sparkle
 /// network request unless the user explicitly opts in, preserving the
 /// local-only invariant. The appcast feed URL and the EdDSA public key are read
 /// from Info.plist (`SUFeedURL`, `SUPublicEDKey`), which the build script writes.
-final class UpdaterController {
+final class UpdaterController: AppUpdating {
     private var controller: SPUStandardUpdaterController?
 
     /// True only in a packaged .app whose Info.plist carries the update config.

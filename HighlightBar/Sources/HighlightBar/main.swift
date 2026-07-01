@@ -67,7 +67,11 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let profileStore = ProfileStore()
     private var lastAppliedProfileName: String?
 
-    private let updaterController = UpdaterController()
+#if APPSTORE
+    private let updater: AppUpdating = NoopUpdater()
+#else
+    private let updater: AppUpdating = UpdaterController()
+#endif
     private let onboardingWindow = OnboardingWindow()
     private let colorPanel = ColorPanelController()
     private var launchAtLoginMenuItem: NSMenuItem?
@@ -243,9 +247,11 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         welcomeItem.target = self
         menu.addItem(welcomeItem)
 
-        let updatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdatesMenu), keyEquivalent: "")
-        updatesItem.target = self
-        menu.addItem(updatesItem)
+        if Features.autoUpdate {
+            let updatesItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdatesMenu), keyEquivalent: "")
+            updatesItem.target = self
+            menu.addItem(updatesItem)
+        }
 
         menu.addItem(.separator())
 
@@ -680,7 +686,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem(title: "Tracking", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
         trackingMenuItems = []
-        for source in TrackingSource.allCases {
+        for source in TrackingSource.allCases where Features.keyboardTracking || source != .keyboard {
             let sourceItem = NSMenuItem(title: source.menuTitle, action: #selector(selectTracking(_:)), keyEquivalent: "")
             sourceItem.target = self
             sourceItem.representedObject = source
@@ -700,7 +706,11 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .scroll:
             installScrollMonitors()
         case .keyboard:
+            #if APPSTORE
+            break
+            #else
             installKeyboardMonitors()
+            #endif
         }
     }
 
@@ -749,6 +759,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshSpotlightIfNeeded()
     }
 
+#if !APPSTORE
     // Keyboard tracking needs the Input Monitoring permission, so it is opt-in
     // and primed with a clear explanation. Mouse stays the no-permission default.
     private func installKeyboardMonitors() {
@@ -781,6 +792,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateBarPosition()
         refreshSpotlightIfNeeded()
     }
+#endif
 
     private func clampTrackedPoint() {
         guard let screen = BarGeometry.screen(containing: trackedPoint) else { return }
@@ -789,6 +801,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         trackedPoint.y = max(bounds.minY, min(trackedPoint.y, bounds.maxY))
     }
 
+#if !APPSTORE
     // Triggers the Input Monitoring prompt and reports whether access is granted.
     private func ensureInputMonitoringPermission() -> Bool {
         if CGPreflightListenEventAccess() {
@@ -813,6 +826,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSWorkspace.shared.open(url)
         }
     }
+#endif
 
     // MARK: - Profiles
 
@@ -973,7 +987,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func checkForUpdatesMenu() {
-        updaterController.checkForUpdates()
+        updater.checkForUpdates()
     }
 
     // MARK: - Per-app auto-enable
@@ -1157,6 +1171,11 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         barShape = settings.barShape
         barOrientation = settings.barOrientation
         trackingSource = settings.trackingSource
+        // Keyboard tracking is unavailable in the sandboxed App Store build;
+        // coerce any persisted/migrated value back to mouse so it isn't applied.
+        if !Features.keyboardTracking, trackingSource == .keyboard {
+            trackingSource = .mouse
+        }
 
         launchAtLogin = settings.launchAtLogin
         hasSeenOnboarding = settings.hasSeenOnboarding

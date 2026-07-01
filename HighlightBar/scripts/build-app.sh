@@ -4,7 +4,11 @@ set -euo pipefail
 APP_NAME="HighlightBar"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-DIST_DIR="${PROJECT_DIR}/dist"
+# Build output. Defaults to a temp dir OUTSIDE the home/Documents tree because
+# macOS stamps com.apple.provenance onto executables built under the home folder
+# (and iCloud-synced Documents make it worse), which invalidates the code
+# signature moments after signing. CI overrides this to the workspace path.
+DIST_DIR="${HB_DIST_DIR:-/private/tmp/HighlightBar/dist}"
 APP_DIR="${DIST_DIR}/${APP_NAME}.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
@@ -17,7 +21,7 @@ ENTITLEMENTS="${PROJECT_DIR}/${APP_NAME}.entitlements"
 # Code-signing identity. "-" = ad-hoc (fine for local runs); CI passes a
 # "Developer ID Application: …" identity for a notarizable build.
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
-BUNDLE_ID="${BUNDLE_ID:-com.local.highlightbar}"
+BUNDLE_ID="${BUNDLE_ID:-com.matthewmullett.highlightbar}"
 MARKETING_VERSION="${MARKETING_VERSION:-1.0}"
 BUILD_VERSION="${BUILD_VERSION:-1}"
 # Sparkle update configuration. Replace with your real appcast URL and EdDSA
@@ -44,6 +48,16 @@ mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}" "${FRAMEWORKS_DIR}"
 cp "${BUILD_BIN}" "${MACOS_DIR}/${APP_NAME}"
 chmod +x "${MACOS_DIR}/${APP_NAME}"
 
+# Bundle the app icon (shared with the App Store build).
+if [ -f "${PROJECT_DIR}/AppIcon.icns" ]; then
+  cp "${PROJECT_DIR}/AppIcon.icns" "${RESOURCES_DIR}/AppIcon.icns"
+fi
+
+# Bundle the privacy manifest (declares no data collection + UserDefaults reason).
+if [ -f "${PROJECT_DIR}/PrivacyInfo.xcprivacy" ]; then
+  cp "${PROJECT_DIR}/PrivacyInfo.xcprivacy" "${RESOURCES_DIR}/PrivacyInfo.xcprivacy"
+fi
+
 # Let the executable find the bundled Sparkle.framework at runtime.
 install_name_tool -add_rpath "@executable_path/../Frameworks" "${MACOS_DIR}/${APP_NAME}" 2>/dev/null || true
 
@@ -59,6 +73,8 @@ cat > "${PLIST_PATH}" <<EOF
   <string>en</string>
   <key>CFBundleExecutable</key>
   <string>${APP_NAME}</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>${BUNDLE_ID}</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -116,10 +132,20 @@ if command -v codesign >/dev/null 2>&1; then
   done
   codesign "${CODESIGN_FLAGS[@]}" --sign "${CODESIGN_IDENTITY}" "${SPARKLE_DEST}"
 
-  # Strip any extended attributes once more, then sign the app last with the
-  # Hardened Runtime entitlements.
-  xattr -cr "${APP_DIR}" 2>/dev/null || true
-  codesign "${CODESIGN_FLAGS[@]}" --entitlements "${ENTITLEMENTS}" --sign "${CODESIGN_IDENTITY}" "${APP_DIR}"
+  # Sign the app last with the Hardened Runtime entitlements. Finder/Spotlight/
+  # QuickLook can race and drop extended attributes ("resource fork / Finder
+  # information" detritus) onto the freshly-built bundle between cleaning and
+  # signing, so clean-and-retry a few times.
+  for attempt in 1 2 3 4 5; do
+    xattr -cr "${APP_DIR}" 2>/dev/null || true
+    find "${APP_DIR}" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true
+    if codesign "${CODESIGN_FLAGS[@]}" --entitlements "${ENTITLEMENTS}" --sign "${CODESIGN_IDENTITY}" "${APP_DIR}"; then
+      break
+    fi
+    [ "${attempt}" = 5 ] && { echo "error: codesign failed after ${attempt} attempts" >&2; exit 1; }
+    echo "codesign hit filesystem detritus; cleaning and retrying (${attempt})..."
+    sleep 1
+  done
 
   echo "Verifying signature..."
   codesign --verify --deep --strict --verbose=1 "${APP_DIR}" || true

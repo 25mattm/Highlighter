@@ -24,16 +24,18 @@ catches up. To reach parity, bring these macOS features to the WinForms app:
 Keep the settings model and naming aligned with the macOS `Settings` so behavior
 matches across platforms.
 
-## 2. App Store distribution + StoreKit monetization (free-vs-pro)
+## 2. StoreKit monetization (free-vs-pro)
 
-Revisit when monetization is on the table. Two parts:
+**App Store distribution: DONE** — 1.0 (free, sandboxed) was submitted to review
+2026-06-26 via `scripts/build-appstore.sh`. The old worry that the sandbox would
+block the overlays + global hotkeys was **disproven by the spike** — only keyboard
+tracking and Sparkle had to drop (handled by the `APPSTORE` flag). Both channels
+now exist: App Store (sandboxed) + Developer ID direct download. *(Future option:
+an `appstore-release` CI workflow to automate the build/sign/upload that's
+currently manual via Transporter.)*
 
-- **Distribution:** an App Store build differs from the current Developer ID +
-  notarized direct download — it requires the App Sandbox, which currently is
-  **intentionally disabled** because it would block the screen overlays and the
-  global Carbon hotkeys. A sandboxed build would need to rework those (e.g.
-  entitlements/temporary exceptions, or dropping global hotkeys inside the
-  sandboxed target). The direct-download build stays the primary channel.
+Still deferred — **monetization**, revisit when it's on the table:
+
 - **Free-vs-pro gating points** (where a paywall would naturally sit):
   - **Spotlight overlay** (Phase 3, `OverlayController` spotlight style) — the
     headline "pro" feature.
@@ -67,6 +69,15 @@ Revisit when monetization is on the table. Two parts:
 - **No automated tests:** the SPM package has no test target. `BarGeometry`,
   `Settings` (Codable round-trip/migration), and `ProfileStore` are the
   most unit-testable seams if/when tests are added.
+- **Independent bar + overlay toggles (deferred — post-1.0):** the mode is one
+  4-way radio (`HighlightMode`: off / barOnly / barAndSpotlight / screenTint in
+  `Settings.swift`), so the bar is coupled to the overlay choice. That blocks two
+  sensible combinations — **bar + screen tint** (a line guide over a visual-stress
+  tint, for readers who need both) and **spotlight without the bar**. Spotlight and
+  tint stay mutually exclusive (both are full-screen overlays that would fight), so
+  the clean model is two controls: a `barVisible` bool + an `overlay` enum
+  (`none`/`spotlight`/`tint`), applied in `applyMode`. Decision: leave the current
+  4-mode menu as-is for 1.0; revisit as an update once there's a user base.
 
 ## 4. v3 feature ideas (competitive scan, June 2026)
 

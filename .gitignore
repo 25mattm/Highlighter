@@ -5,6 +5,8 @@ HighlightBar/.build/
 HighlightBar/.cache/
 HighlightBar/.swiftpm/
 HighlightBar/dist/
+HighlightBar/.build-appstore/
+HighlightBar/dist-appstore/
 
 # Windows app output
 WindowsHighlightBar/bin/

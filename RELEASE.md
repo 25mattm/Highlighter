@@ -75,11 +75,68 @@ version, and the `.zip` download URL. See Sparkle's `SampleAppcast.xml` (in the
 resolved package) for the format.
 
 ## Notes
-- **Do not enable the App Sandbox** — it would block the overlays and global
-  hotkeys. The Hardened Runtime is enabled at signing time
-  ([HighlightBar.entitlements](HighlightBar/HighlightBar.entitlements) keeps the
-  app un-sandboxed).
+- **The direct/Developer ID build stays un-sandboxed** — it doesn't need the
+  sandbox, and sandboxing it would needlessly drop keyboard tracking and
+  complicate the embedded Sparkle. (The App Store build is a separate, sandboxed
+  target — see below. The sandbox spike confirmed the overlays and global hotkeys
+  work fine sandboxed; only keyboard tracking and Sparkle must go.) The Hardened
+  Runtime is enabled at signing time
+  ([HighlightBar.entitlements](HighlightBar/HighlightBar.entitlements)).
 - If notarization ever reports a **library-validation** failure, add
   `com.apple.security.cs.disable-library-validation` to the entitlements. With a
   single Developer ID signing the app and the embedded Sparkle.framework, it
   should not be needed.
+
+# Mac App Store distribution (the second channel)
+
+The App Store build is a **separate, sandboxed configuration** of the same
+codebase (no Sparkle, no keyboard tracking), produced by
+[scripts/build-appstore.sh](HighlightBar/scripts/build-appstore.sh): it builds
+with `HB_APPSTORE=1`, signs with the App Sandbox entitlements
+([HighlightBar-appstore.entitlements](HighlightBar/HighlightBar-appstore.entitlements)),
+and wraps the app in a signed installer `.pkg`. Bundle id:
+`com.matthewmullett.highlightbar` (same as the direct build).
+
+## 1. Credentials (you generate these in your Apple Developer account)
+- An **App ID** for `com.matthewmullett.highlightbar` (Identifiers).
+- An **Apple Distribution** certificate (signs the app).
+- A **Mac Installer Distribution** certificate (signs the `.pkg`; its codesign
+  identity reads `3rd Party Mac Developer Installer: …`).
+- A **Mac App Store** provisioning profile for the App ID.
+- Easiest: let **Xcode → Settings → Accounts → Manage Certificates** create the
+  certs and Xcode-managed signing create the profile.
+
+## 2. Build the signed `.pkg`
+```bash
+cd HighlightBar
+APP_SIGN_IDENTITY="Apple Distribution: Your Name (TEAMID)" \
+PKG_SIGN_IDENTITY="3rd Party Mac Developer Installer: Your Name (TEAMID)" \
+PROVISION_PROFILE="/path/to/HighlightBar_MAS.provisionprofile" \
+MARKETING_VERSION=1.0 BUILD_VERSION=1 \
+scripts/build-appstore.sh
+```
+The `.pkg` lands in `/private/tmp/HighlightBar/dist-appstore/` (see build-location
+note below).
+
+## 3. Upload + review
+- Create the App Store Connect app record (bundle id above, **Free**).
+- Upload the `.pkg` with **Transporter** (drag it in) or
+  `xcrun altool --upload-app -t macos -f <pkg> --apiKey <KEY_ID> --apiIssuer <ISSUER_ID>`.
+- It appears in **TestFlight** — test, then submit for review with **manual
+  release** so you control go-live.
+
+## Listing assets (already drafted)
+- Copy: [store-listing.md](HighlightBar/store-listing.md). Privacy policy:
+  [PRIVACY.md](HighlightBar/PRIVACY.md) — host it publicly, use the URL.
+- Screenshots: `HighlightBar/store-screenshots/` (2560×1600). Icon: bundled
+  `.icns` + actool-compiled [Assets.xcassets](HighlightBar/Assets.xcassets).
+  Privacy manifest [PrivacyInfo.xcprivacy](HighlightBar/PrivacyInfo.xcprivacy)
+  declares "no data collected".
+
+## Build location & code signing (important)
+Both scripts default `DIST_DIR` to `/private/tmp/HighlightBar/…`, **not** the
+project folder. macOS stamps `com.apple.provenance` onto executables built under
+the home/`Documents` tree (worse with iCloud Drive), invalidating the code
+signature seconds after signing — so a `.pkg` built in the project would embed a
+broken app. Building under `/tmp` avoids it. Override with `HB_DIST_DIR=<path>`
+(CI sets it to the workspace).

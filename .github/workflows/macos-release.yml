@@ -47,6 +47,7 @@ jobs:
           BUILD_VERSION: ${{ steps.version.outputs.build }}
           SU_FEED_URL: ${{ vars.SU_FEED_URL }}
           SU_PUBLIC_ED_KEY: ${{ vars.SU_PUBLIC_ED_KEY }}
+          HB_DIST_DIR: ${{ github.workspace }}/HighlightBar/dist
         run: ./HighlightBar/scripts/build-app.sh
 
       - name: Notarize & staple
