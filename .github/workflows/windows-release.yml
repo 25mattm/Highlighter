@@ -2,7 +2,7 @@ name: Release Windows App
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
+  VERSION: ${{ github.ref_name }}
 on:
   push:
     tags:
@@ -31,14 +31,15 @@ jobs:
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
           -p:PublishTrimmed=false
-          -o publish/win-x64
+           -p:Version=${{ env.VERSION }}
+           -o publish/win-x64
 
       - name: Zip output
         shell: pwsh
-        run: Compress-Archive -Path publish/win-x64/* -DestinationPath publish/HighlightBar-windows-x64.zip -Force
+        run: Compress-Archive -Path publish/win-x64/* -DestinationPath publish/HighlightBar-windows-${{ env.VERSION }}-x64.zip -Force
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: publish/HighlightBar-windows-x64.zip
+          files: publish/HighlightBar-windows-${{ env.VERSION }}-x64.zip
           generate_release_notes: true
