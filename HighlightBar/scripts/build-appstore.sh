@@ -72,10 +72,18 @@ if [ -f "${PROJECT_DIR}/PrivacyInfo.xcprivacy" ]; then
 fi
 
 # Compile the asset-catalog icon (App Store review prefers CFBundleIconName).
+# Info.plist declares CFBundleIconName, so a store build (non-ad-hoc identity)
+# must not ship without the Assets.car — failures are fatal there.
 if command -v actool >/dev/null 2>&1 && [ -d "${PROJECT_DIR}/Assets.xcassets" ]; then
-  actool "${PROJECT_DIR}/Assets.xcassets" --compile "${RESOURCES_DIR}" \
-    --platform macosx --minimum-deployment-target 13.0 \
-    --app-icon AppIcon --output-partial-info-plist /tmp/hb-actool.plist >/dev/null 2>&1 || true
+  if ! actool "${PROJECT_DIR}/Assets.xcassets" --compile "${RESOURCES_DIR}" \
+      --platform macosx --minimum-deployment-target 13.0 \
+      --app-icon AppIcon --output-partial-info-plist /tmp/hb-actool.plist >/dev/null; then
+    echo "warning: actool failed — Assets.car missing" >&2
+    [ "${APP_SIGN_IDENTITY}" = "-" ] || exit 1
+  fi
+elif [ "${APP_SIGN_IDENTITY}" != "-" ]; then
+  echo "error: actool or Assets.xcassets unavailable — required for a store build" >&2
+  exit 1
 fi
 
 # Info.plist intentionally omits Sparkle's SUFeedURL / SUPublicEDKey: the App
@@ -132,7 +140,9 @@ fi
 # The App Store / TestFlight requires the app to be signed WITH the
 # application-identifier + team-identifier entitlements that match the embedded
 # provisioning profile (otherwise Transporter rejects it — error 90886).
-# Extract them from the profile and merge with the sandbox entitlement.
+# Extract them from the profile and add them to a COPY of the entitlements file,
+# so every key in that file (sandbox, user-selected files, future additions)
+# reaches the store build.
 SIGN_ENTITLEMENTS="${ENTITLEMENTS}"
 if [ -n "${PROVISION_PROFILE}" ]; then
   _pp="$(mktemp)"
@@ -141,20 +151,9 @@ if [ -n "${PROVISION_PROFILE}" ]; then
     _team="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.team-identifier' "${_pp}" 2>/dev/null || true)"
     if [ -n "${_appid}" ] && [ -n "${_team}" ]; then
       SIGN_ENTITLEMENTS="$(mktemp)"
-      cat > "${SIGN_ENTITLEMENTS}" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>com.apple.security.app-sandbox</key>
-  <true/>
-  <key>com.apple.application-identifier</key>
-  <string>${_appid}</string>
-  <key>com.apple.developer.team-identifier</key>
-  <string>${_team}</string>
-</dict>
-</plist>
-EOF
+      cp "${ENTITLEMENTS}" "${SIGN_ENTITLEMENTS}"
+      /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string ${_appid}" "${SIGN_ENTITLEMENTS}"
+      /usr/libexec/PlistBuddy -c "Add :com.apple.developer.team-identifier string ${_team}" "${SIGN_ENTITLEMENTS}"
     fi
   fi
   rm -f "${_pp}"

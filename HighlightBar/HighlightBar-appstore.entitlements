@@ -2,10 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Mac App Store builds must be sandboxed. Start minimal; add
-       com.apple.security.files.user-selected.read-only only if the per-app
-       "Add an App…" picker survives the sandbox spike. -->
+  <!-- Mac App Store builds must be sandboxed. -->
   <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <!-- Lets the "Add an App…" NSOpenPanel grant read access to app bundles
+       outside /Applications and /System (e.g. ~/Applications), where the
+       default sandbox profile can't read Info.plist to resolve the bundle id. -->
+  <key>com.apple.security.files.user-selected.read-only</key>
   <true/>
 </dict>
 </plist>

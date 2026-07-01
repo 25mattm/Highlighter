@@ -18,7 +18,9 @@ let package = Package(
         .executable(name: "HighlightBar", targets: ["HighlightBar"])
     ],
     dependencies: isAppStore ? [] : [
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0")
+        // Pinned exactly: Package.resolved is gitignored because it flip-flops
+        // between the two build configs, so this is the only pin.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.3")
     ],
     targets: [
         .executableTarget(

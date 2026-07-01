@@ -7,6 +7,9 @@ HighlightBar/.swiftpm/
 HighlightBar/dist/
 HighlightBar/.build-appstore/
 HighlightBar/dist-appstore/
+# Flip-flops between build configs (the App Store config has no dependencies);
+# Sparkle is pinned exact in Package.swift instead.
+HighlightBar/Package.resolved
 
 # Windows app output
 WindowsHighlightBar/bin/
