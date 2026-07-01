@@ -23,6 +23,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _fontLabelItem = new() { Enabled = false };
     private readonly ToolStripMenuItem _opacityLabelItem = new() { Enabled = false };
     private readonly ToolStripMenuItem _visibilityItem = new("Hide Bar (Ctrl+Shift+H)");
+    private readonly TrackBar _fontTrackBar;
+    private readonly TrackBar _opacityTrackBar;
+    private readonly ToolStripControlHost _fontSliderItem;
+    private readonly ToolStripControlHost _opacitySliderItem;
 
     private string? _previewColorName;
     private bool _barHidden;
@@ -31,6 +35,22 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _settings = SettingsStore.Load();
         NormalizeSettings();
+
+        _fontTrackBar = CreateTrackBar(
+            minValue: 10,
+            maxValue: 100,
+            tickFrequency: 10,
+            initialValue: _settings.FontReferenceSize,
+            onScroll: value => SetFontReference(value, persist: true));
+        _fontSliderItem = CreateTrackBarHost(_fontTrackBar);
+
+        _opacityTrackBar = CreateTrackBar(
+            minValue: 10,
+            maxValue: 90,
+            tickFrequency: 5,
+            initialValue: _settings.OpacityPercent,
+            onScroll: value => SetOpacity(value, persist: true));
+        _opacitySliderItem = CreateTrackBarHost(_opacityTrackBar);
 
         _overlay = new OverlayForm();
         _overlay.ToggleRequested += (_, _) => ToggleVisibility();
@@ -46,9 +66,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Visible = true
         };
 
-        InsertValueLabels(menu);
         UpdateMenuLabels();
         UpdateColorChecks();
+        SyncSliderValues();
 
         _followTimer = new System.Windows.Forms.Timer { Interval = 16 };
         _followTimer.Tick += (_, _) =>
@@ -91,9 +111,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         var quitItem = new ToolStripMenuItem("Quit Highlight Bar", null, (_, _) => ExitApp());
 
+        menu.Items.Add(_fontLabelItem);
+        menu.Items.Add(_fontSliderItem);
         menu.Items.Add(decreaseFontItem);
         menu.Items.Add(increaseFontItem);
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_opacityLabelItem);
+        menu.Items.Add(_opacitySliderItem);
         menu.Items.Add(decreaseOpacityItem);
         menu.Items.Add(increaseOpacityItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -106,12 +130,45 @@ internal sealed class TrayApplicationContext : ApplicationContext
         return menu;
     }
 
-    private void InsertValueLabels(ContextMenuStrip menu)
+    private static TrackBar CreateTrackBar(int minValue, int maxValue, int tickFrequency, int initialValue, Action<int> onScroll)
     {
-        menu.Items.Insert(0, _fontLabelItem);
-        menu.Items.Insert(1, new ToolStripSeparator());
-        menu.Items.Insert(5, _opacityLabelItem);
-        menu.Items.Insert(6, new ToolStripSeparator());
+        var trackBar = new TrackBar
+        {
+            Minimum = minValue,
+            Maximum = maxValue,
+            TickFrequency = tickFrequency,
+            SmallChange = 1,
+            LargeChange = tickFrequency,
+            AutoSize = false,
+            Height = 32,
+            Width = 228,
+            Value = Math.Clamp(initialValue, minValue, maxValue)
+        };
+
+        trackBar.Scroll += (_, _) => onScroll(trackBar.Value);
+        return trackBar;
+    }
+
+    private static ToolStripControlHost CreateTrackBarHost(TrackBar trackBar)
+    {
+        var panel = new Panel
+        {
+            Width = 260,
+            Height = 44,
+            Margin = Padding.Empty,
+            Padding = new Padding(12, 6, 12, 6)
+        };
+
+        trackBar.Location = new Point(12, 6);
+        panel.Controls.Add(trackBar);
+
+        return new ToolStripControlHost(panel)
+        {
+            AutoSize = false,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            Size = panel.Size
+        };
     }
 
     private void UpdateMenuLabels()
@@ -128,18 +185,40 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void SyncSliderValues()
+    {
+        _fontTrackBar.Value = Math.Clamp(_settings.FontReferenceSize, _fontTrackBar.Minimum, _fontTrackBar.Maximum);
+        _opacityTrackBar.Value = Math.Clamp(_settings.OpacityPercent, _opacityTrackBar.Minimum, _opacityTrackBar.Maximum);
+    }
+
     private void ChangeFontReference(int delta)
     {
-        _settings.FontReferenceSize = Math.Clamp(_settings.FontReferenceSize + delta, 10, 100);
-        ApplySettingsToOverlay();
-        SaveSettings();
+        SetFontReference(_settings.FontReferenceSize + delta, persist: true);
     }
 
     private void ChangeOpacity(int deltaPercent)
     {
-        _settings.OpacityPercent = Math.Clamp(_settings.OpacityPercent + deltaPercent, 10, 90);
+        SetOpacity(_settings.OpacityPercent + deltaPercent, persist: true);
+    }
+
+    private void SetFontReference(int value, bool persist)
+    {
+        _settings.FontReferenceSize = Math.Clamp(value, 10, 100);
         ApplySettingsToOverlay();
-        SaveSettings();
+        if (persist)
+        {
+            SaveSettings();
+        }
+    }
+
+    private void SetOpacity(int value, bool persist)
+    {
+        _settings.OpacityPercent = Math.Clamp(value, 10, 90);
+        ApplySettingsToOverlay();
+        if (persist)
+        {
+            SaveSettings();
+        }
     }
 
     private void PreviewColor(string colorName)
@@ -191,6 +270,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _overlay.FollowCursor(Cursor.Position);
         UpdateMenuLabels();
         UpdateColorChecks();
+        SyncSliderValues();
     }
 
     private void NormalizeSettings()
