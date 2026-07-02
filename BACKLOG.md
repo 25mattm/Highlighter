@@ -69,20 +69,30 @@ Still deferred — **monetization**, revisit when it's on the table:
 - **No automated tests:** the SPM package has no test target. `BarGeometry`,
   `Settings` (Codable round-trip/migration), and `ProfileStore` are the
   most unit-testable seams if/when tests are added.
-- **Color swatch row is invisible to VoiceOver** (found in the July 2026 full
-  review): `ColorPickerMenuView` is a custom menu view with only an accessibility
-  label — no child elements or press actions — so VoiceOver users can't pick a
-  preset color. Mitigation today: "Custom Color…" opens the fully-accessible
-  system color panel. Fix path: expose each swatch as an `NSAccessibilityElement`
-  child with a press action.
-- **The 60 Hz tracking timer never pauses** — it ticks (and early-outs) even
-  while hidden, suppressed, or in `off`/tint modes where nothing moves. Battery
-  nicety: invalidate on hide / mode-off and restart on show, centralized in
-  `applyMode`. Deferred because every show-path must restart it correctly and the
-  guard-only cost is tiny.
-- **Hotkey registration failures are silent:** if another app owns ⇧⌘H or ⇧⌘L,
-  `HotKeyCenter.register` returns nil and the shortcut just doesn't work, with no
-  hint. Could surface a one-time notice; deferred as noise-vs-value.
+- ~~**Color swatch row was invisible to VoiceOver**~~ — fixed:
+  `ColorPickerMenuView` now overrides `accessibilityChildren()` to expose each
+  swatch as an `NSAccessibilityElement` (role `.radioButton`, labeled with the
+  color name, `accessibilityValue` reflecting selection) with a press action
+  that performs the same selection as `mouseDown`. Purely additive — the
+  custom `draw(_:)` rendering and hover-preview mouse tracking for sighted
+  users are unchanged. "Custom Color…" (system color panel) remains available
+  as an always-accessible alternative.
+- ~~**The 60 Hz tracking timer never paused**~~ — fixed: `applyMode` now
+  starts/stops the timer itself (start when `!effectivelyHidden && mode.showsBar`
+  and no timer exists yet, invalidate + nil otherwise), so it no longer runs
+  while hidden, suppressed, or in `off`/tint modes. All five `applyMode` call
+  sites (launch, mode change, profile apply, per-app suppression, hide toggle)
+  go through this one path, so there's a single restart/stop point.
+- ~~**Hotkey registration failures are silent**~~ — fixed: `setupHotKeys` now
+  shows an NSAlert if ⇧⌘H or ⇧⌘L fails to register (e.g. another app owns that
+  combination), pointing the user at the menu bar item as a fallback. Gated on
+  a persisted `hasShownHotKeyConflictAlert` flag (same pattern as
+  `hasSeenOnboarding`) so a *permanently* conflicting shortcut alerts once ever,
+  not as a modal on every launch. `applicationDidFinishLaunching` also now
+  shows onboarding before registering hotkeys, so a first-run conflict alert
+  can't block the welcome window from appearing. The nudge shortcuts (⇧⌘↑/↓,
+  re-registered every lock/unlock) stay silent on purpose — minor convenience,
+  no other trigger path, alerting on every lock toggle would be noisy.
 - **Independent bar + overlay toggles (deferred — post-1.0):** the mode is one
   4-way radio (`HighlightMode`: off / barOnly / barAndSpotlight / screenTint in
   `Settings.swift`), so the bar is coupled to the overlay choice. That blocks two

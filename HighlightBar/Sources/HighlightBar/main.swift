@@ -77,6 +77,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var launchAtLoginMenuItem: NSMenuItem?
     private var launchAtLogin = false
     private var hasSeenOnboarding = false
+    private var hasShownHotKeyConflictAlert = false
 
     private var perAppEnabled = false
     private var enabledBundleIDs: [String] = []
@@ -118,9 +119,10 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyMode()
         applyTrackingSource()
         updateMenuState()
-        startTracking()
-        setupHotKeys()
+        // Onboarding first: a first-run user should see the friendly welcome
+        // window before any hotkey-conflict warning could block on top of it.
         showOnboardingIfFirstLaunch()
+        setupHotKeys()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -289,6 +291,9 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateBarPosition()
     }
 
+    // Starts the 60Hz tracking timer. Only called from applyMode() while the bar
+    // is actually visible, so it never runs (and drains battery) while hidden,
+    // suppressed, or in a mode that doesn't show the bar.
     private func startTracking() {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.tick()
@@ -298,8 +303,10 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // One frame of tracking: reposition the bar (when its mode shows it) and, in
-    // spotlight mode, move the cutout to follow it.
+    // One frame of tracking: reposition the bar and, in spotlight mode, move the
+    // cutout to follow it. applyMode() only keeps the timer alive while
+    // mode.showsBar and the bar isn't effectively hidden, so both conditions
+    // checked here are always true in practice; kept as a defensive guard.
     private func tick() {
         guard !effectivelyHidden else { return }
         if mode.showsBar {
@@ -460,12 +467,19 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // Shows/hides the bar and overlays to match the current mode (and the master
     // hidden toggle), rebuilding overlays when an overlay mode becomes active.
+    // Also the single place that starts/stops the 60Hz tracking timer, so it
+    // only ever runs while the bar is actually visible.
     private func applyMode() {
         if !effectivelyHidden && mode.showsBar {
             windowManager?.barWindow.orderFrontRegardless()
             updateBarPosition()
+            if timer == nil {
+                startTracking()
+            }
         } else {
             windowManager?.barWindow.orderOut(nil)
+            timer?.invalidate()
+            timer = nil
         }
 
         if effectivelyHidden {
@@ -851,6 +865,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         merged.hasSeenOnboarding = hasSeenOnboarding
         merged.perAppEnabled = perAppEnabled
         merged.enabledBundleIDs = enabledBundleIDs
+        merged.hasShownHotKeyConflictAlert = hasShownHotKeyConflictAlert
         adopt(merged)
         lastAppliedProfileName = profile.name
         profileStore.lastAppliedName = profile.name
@@ -1195,6 +1210,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hasSeenOnboarding = settings.hasSeenOnboarding
         perAppEnabled = settings.perAppEnabled
         enabledBundleIDs = settings.enabledBundleIDs
+        hasShownHotKeyConflictAlert = settings.hasShownHotKeyConflictAlert
     }
 
     // Serializes the complete current state. Every Settings field has a backing
@@ -1219,6 +1235,7 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings.hasSeenOnboarding = hasSeenOnboarding
         settings.perAppEnabled = perAppEnabled
         settings.enabledBundleIDs = enabledBundleIDs
+        settings.hasShownHotKeyConflictAlert = hasShownHotKeyConflictAlert
         settingsStore.save(settings)
     }
 
@@ -1359,14 +1376,43 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // global; size/opacity/color stay on the menu's on-screen controls.
     private func setupHotKeys() {
         let center = HotKeyCenter()
-        center.register(keyCode: kVK_ANSI_H, modifiers: [.command, .shift]) { [weak self] in
+        var failedShortcuts: [String] = []
+
+        if center.register(keyCode: kVK_ANSI_H, modifiers: [.command, .shift], handler: { [weak self] in
             self?.toggleHidden()
+        }) == nil {
+            failedShortcuts.append("⇧⌘H (Hide Highlighter)")
         }
-        center.register(keyCode: kVK_ANSI_L, modifiers: [.command, .shift]) { [weak self] in
+        if center.register(keyCode: kVK_ANSI_L, modifiers: [.command, .shift], handler: { [weak self] in
             self?.toggleLock()
+        }) == nil {
+            failedShortcuts.append("⇧⌘L (Lock Bar Position)")
         }
         hotKeyCenter = center
         updateNudgeHotKeys()
+
+        // Only the core shortcuts get a heads-up: both remain fully usable from
+        // the menu bar item, so this is a one-time convenience notice, not a
+        // broken-feature alert. The nudge shortcuts (re-registered on every
+        // lock/unlock) are deliberately left silent - flagging those too would
+        // fire the same alert repeatedly and add noise for a minor feature.
+        // Gated on hasShownHotKeyConflictAlert so a permanently-conflicting
+        // shortcut (another app that always owns it) shows this once ever,
+        // not as a modal on every single launch.
+        if !failedShortcuts.isEmpty && !hasShownHotKeyConflictAlert {
+            hasShownHotKeyConflictAlert = true
+            saveSettings()
+            presentHotKeyConflictAlert(for: failedShortcuts)
+        }
+    }
+
+    private func presentHotKeyConflictAlert(for failedShortcuts: [String]) {
+        let alert = NSAlert()
+        alert.messageText = "Some Highlight Bar shortcuts are unavailable"
+        alert.informativeText = "\(failedShortcuts.joined(separator: " and ")) couldn't be registered, probably because another running app already uses that combination. You can still trigger these from the Highlight Bar menu bar icon."
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     // The nudge shortcuts (⇧⌘↑/↓) only do anything while the bar is locked, and

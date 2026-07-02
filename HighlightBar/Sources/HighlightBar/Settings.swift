@@ -107,6 +107,11 @@ struct Settings: Codable, Equatable {
     var perAppEnabled: Bool = false
     var enabledBundleIDs: [String] = []
 
+    // Whether the one-time "some shortcuts are unavailable" conflict alert has
+    // already been shown, so a permanently-conflicting shortcut doesn't nag the
+    // user with a modal on every launch.
+    var hasShownHotKeyConflictAlert: Bool = false
+
     init() {}
 
     private enum CodingKeys: String, CodingKey {
@@ -128,6 +133,7 @@ struct Settings: Codable, Equatable {
         case hasSeenOnboarding
         case perAppEnabled
         case enabledBundleIDs
+        case hasShownHotKeyConflictAlert
     }
 
     init(from decoder: Decoder) throws {
@@ -151,6 +157,7 @@ struct Settings: Codable, Equatable {
         settings.hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? settings.hasSeenOnboarding
         settings.perAppEnabled = try container.decodeIfPresent(Bool.self, forKey: .perAppEnabled) ?? settings.perAppEnabled
         settings.enabledBundleIDs = try container.decodeIfPresent([String].self, forKey: .enabledBundleIDs) ?? settings.enabledBundleIDs
+        settings.hasShownHotKeyConflictAlert = try container.decodeIfPresent(Bool.self, forKey: .hasShownHotKeyConflictAlert) ?? settings.hasShownHotKeyConflictAlert
         self = settings
     }
 }

@@ -1,5 +1,16 @@
 import AppKit
 
+/// A single swatch exposed to VoiceOver/assistive tech, since the row itself is
+/// custom-drawn (see `ColorPickerMenuView.draw(_:)`) and has no real subviews.
+private final class ColorSwatchAccessibilityElement: NSAccessibilityElement {
+    var pressAction: (() -> Void)?
+
+    override func accessibilityPerformPress() -> Bool {
+        pressAction?()
+        return true
+    }
+}
+
 /// A row of color swatches embedded directly in the status-bar menu. Hovering a
 /// swatch previews that color on the live bar; clicking selects it.
 final class ColorPickerMenuView: NSView {
@@ -27,6 +38,7 @@ final class ColorPickerMenuView: NSView {
         let width = (horizontalInset * 2) + CGFloat(options.count) * swatchSize + CGFloat(max(0, options.count - 1)) * spacing
         let height = swatchSize + (verticalInset * 2)
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        setAccessibilityRole(.group)
     }
 
     required init?(coder: NSCoder) {
@@ -107,6 +119,24 @@ final class ColorPickerMenuView: NSView {
                 hoverPath.lineWidth = 1.5
                 hoverPath.stroke()
             }
+        }
+    }
+
+    override func accessibilityChildren() -> [Any]? {
+        options.indices.map { index in
+            let option = options[index]
+            let element = ColorSwatchAccessibilityElement()
+            element.setAccessibilityParent(self)
+            element.setAccessibilityRole(.radioButton)
+            element.setAccessibilityLabel(option.name)
+            element.setAccessibilityValue(option.name == selectedColorName ? 1 : 0)
+            element.setAccessibilityFrameInParentSpace(rectForSwatch(at: index))
+            element.pressAction = { [weak self] in
+                guard let self else { return }
+                self.selectedColorName = option.name
+                self.onSelect?(option.name)
+            }
+            return element
         }
     }
 
