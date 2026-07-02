@@ -136,6 +136,8 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "HB"
         item.button?.toolTip = "Highlight Bar"
+        // VoiceOver should announce the app name, not the "HB" glyph.
+        item.button?.setAccessibilityLabel("Highlight Bar")
 
         let menu = NSMenu()
         menu.delegate = self
@@ -837,7 +839,19 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func applyProfile(_ profile: Profile) {
-        adopt(profile.settings)
+        // Profiles carry only appearance/behavior fields (see
+        // currentSettingsSnapshot); the snapshot's other fields are defaults.
+        // Keep the live app-level state — lock, login item, onboarding,
+        // per-app list — so applying a profile can't wipe it.
+        var merged = profile.settings
+        merged.isLocked = isLocked
+        merged.lockedAnchorX = lockedAnchorX
+        merged.lockedAnchorY = lockedAnchorY
+        merged.launchAtLogin = launchAtLogin
+        merged.hasSeenOnboarding = hasSeenOnboarding
+        merged.perAppEnabled = perAppEnabled
+        merged.enabledBundleIDs = enabledBundleIDs
+        adopt(merged)
         lastAppliedProfileName = profile.name
         profileStore.lastAppliedName = profile.name
         saveSettings()

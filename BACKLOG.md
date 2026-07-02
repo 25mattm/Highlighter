@@ -69,6 +69,20 @@ Still deferred — **monetization**, revisit when it's on the table:
 - **No automated tests:** the SPM package has no test target. `BarGeometry`,
   `Settings` (Codable round-trip/migration), and `ProfileStore` are the
   most unit-testable seams if/when tests are added.
+- **Color swatch row is invisible to VoiceOver** (found in the July 2026 full
+  review): `ColorPickerMenuView` is a custom menu view with only an accessibility
+  label — no child elements or press actions — so VoiceOver users can't pick a
+  preset color. Mitigation today: "Custom Color…" opens the fully-accessible
+  system color panel. Fix path: expose each swatch as an `NSAccessibilityElement`
+  child with a press action.
+- **The 60 Hz tracking timer never pauses** — it ticks (and early-outs) even
+  while hidden, suppressed, or in `off`/tint modes where nothing moves. Battery
+  nicety: invalidate on hide / mode-off and restart on show, centralized in
+  `applyMode`. Deferred because every show-path must restart it correctly and the
+  guard-only cost is tiny.
+- **Hotkey registration failures are silent:** if another app owns ⇧⌘H or ⇧⌘L,
+  `HotKeyCenter.register` returns nil and the shortcut just doesn't work, with no
+  hint. Could surface a one-time notice; deferred as noise-vs-value.
 - **Independent bar + overlay toggles (deferred — post-1.0):** the mode is one
   4-way radio (`HighlightMode`: off / barOnly / barAndSpotlight / screenTint in
   `Settings.swift`), so the bar is coupled to the overlay choice. That blocks two
