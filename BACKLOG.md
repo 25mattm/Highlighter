@@ -53,8 +53,11 @@ Still deferred — **monetization**, revisit when it's on the table:
   by v3 custom colors (`Custom Overlay Color…` can pick true black for a stronger
   dim). The 6 presets still skew light; a darker preset could still be a nice
   default.
-- **App icon:** the menu-bar item shows the text `HB` and the bundle has no real
-  app icon (`CFBundleIconFile`). Add an icon set for the `.app`.
+- ~~**App icon:** the menu-bar item shows the text `HB` and the bundle has no real
+  app icon (`CFBundleIconFile`).~~ — fixed: the `.app` bundles `AppIcon.icns` +
+  the compiled `Assets.xcassets` (`CFBundleIconName`), and the menu-bar status
+  item now uses the `highlighter` SF Symbol template glyph (with an `HB` text
+  fallback) instead of the `HB` text.
 - **Sparkle appcast hosting:** `SUFeedURL` defaults to a GitHub Pages URL that
   must actually be hosted, and `SUPublicEDKey` is a placeholder until the real
   key is set (see `RELEASE.md`). No appcast is published yet.

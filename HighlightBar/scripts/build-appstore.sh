@@ -35,6 +35,10 @@ PKG_SIGN_IDENTITY="${PKG_SIGN_IDENTITY:-}"
 # Mac App Store provisioning profile to embed (required by the real store build).
 PROVISION_PROFILE="${PROVISION_PROFILE:-}"
 BUNDLE_ID="${BUNDLE_ID:-com.matthewmullett.highlightbar}"
+# Placeholders for the local ad-hoc smoke build. A real store upload MUST pass
+# both: MARKETING_VERSION (a new version string, e.g. 1.0.1) and BUILD_VERSION
+# (CFBundleVersion, strictly higher than the last shipped build). 1.0/build 1 is
+# already live, so the next upload is 1.0.1 / build 2. See RELEASE.md.
 MARKETING_VERSION="${MARKETING_VERSION:-1.0}"
 BUILD_VERSION="${BUILD_VERSION:-1}"
 
@@ -51,8 +55,12 @@ if [ "${PKG_SIGN_IDENTITY}" = "auto" ]; then
 fi
 
 echo "Building ${APP_NAME} (App Store config, HB_APPSTORE=1)..."
-HB_APPSTORE=1 swift build -c release --package-path "${PROJECT_DIR}" --scratch-path "${SCRATCH}"
-BUILD_BIN="$(HB_APPSTORE=1 swift build -c release --package-path "${PROJECT_DIR}" --scratch-path "${SCRATCH}" --show-bin-path)/${APP_NAME}"
+# Build a universal (arm64 + x86_64) binary so the store build installs on Intel
+# Macs too — a host-arch-only build excludes them. The App Store config has no
+# external dependencies (Package.swift: no Sparkle), so this is a clean fat build;
+# SwiftPM merges the slices and --show-bin-path returns the universal output dir.
+HB_APPSTORE=1 swift build -c release --arch arm64 --arch x86_64 --package-path "${PROJECT_DIR}" --scratch-path "${SCRATCH}"
+BUILD_BIN="$(HB_APPSTORE=1 swift build -c release --arch arm64 --arch x86_64 --package-path "${PROJECT_DIR}" --scratch-path "${SCRATCH}" --show-bin-path)/${APP_NAME}"
 
 echo "Creating app bundle at ${APP_DIR}..."
 rm -rf "${APP_DIR}"

@@ -136,9 +136,17 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "HB"
+        // A monochrome template glyph in the menu bar (adapts to light/dark and
+        // the menu-bar tint). Falls back to "HB" text if the symbol is ever
+        // unavailable. Not the full-color AppIcon — that renders poorly here.
+        if let glyph = NSImage(systemSymbolName: "highlighter", accessibilityDescription: "Highlight Bar") {
+            glyph.isTemplate = true
+            item.button?.image = glyph
+        } else {
+            item.button?.title = "HB"
+        }
         item.button?.toolTip = "Highlight Bar"
-        // VoiceOver should announce the app name, not the "HB" glyph.
+        // VoiceOver should announce the app name, not the icon.
         item.button?.setAccessibilityLabel("Highlight Bar")
 
         let menu = NSMenu()

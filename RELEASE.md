@@ -112,9 +112,17 @@ cd HighlightBar
 APP_SIGN_IDENTITY="Apple Distribution: Your Name (TEAMID)" \
 PKG_SIGN_IDENTITY="3rd Party Mac Developer Installer: Your Name (TEAMID)" \
 PROVISION_PROFILE="/path/to/HighlightBar_MAS.provisionprofile" \
-MARKETING_VERSION=1.0 BUILD_VERSION=1 \
+MARKETING_VERSION=1.0.1 BUILD_VERSION=2 \
 scripts/build-appstore.sh
 ```
+
+> **Version numbers must increase every upload.** 1.0 (build 1) is already live,
+> so the next upload is **1.0.1 / build 2** (shown above). App Store Connect
+> rejects any upload whose `BUILD_VERSION` (CFBundleVersion) is not strictly
+> higher than the last one you shipped, and a new public release needs a new
+> `MARKETING_VERSION` string — bumping the build number alone leaves it under the
+> already-released 1.0. Bump both for each later release (1.0.2 / 3, and so on).
+
 The `.pkg` lands in `/private/tmp/HighlightBar/dist-appstore/` (see build-location
 note below).
 
