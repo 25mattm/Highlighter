@@ -134,17 +134,54 @@ final class HighlightBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Draws the menu-bar status-item icon: a monochrome, template version of the
+    /// app icon — five ragged "text" lines with the middle reading line wrapped
+    /// in a rounded highlight bar. `isTemplate` lets macOS tint it for the
+    /// current menu-bar appearance (light/dark, active/inactive).
+    private static func makeMenuBarGlyph() -> NSImage {
+        let size = NSSize(width: 18, height: 15)
+        let image = NSImage(size: size, flipped: false) { _ in
+            NSColor.black.set() // color is ignored for a template image
+            let left: CGFloat = 2.5
+
+            // A thin, rounded "text" line from `left` to `right` at a given center y.
+            func textLine(centerY: CGFloat, right: CGFloat, thickness: CGFloat = 1.5) {
+                let rect = NSRect(x: left, y: centerY - thickness / 2,
+                                  width: right - left, height: thickness)
+                NSBezierPath(roundedRect: rect, xRadius: thickness / 2, yRadius: thickness / 2).fill()
+            }
+
+            // Origin is bottom-left, so higher y = higher on screen. Lines run
+            // top → bottom; the middle line is the highlighted reading line.
+            textLine(centerY: 13.0, right: 14.5)
+            textLine(centerY: 10.5, right: 13.0)
+
+            // Highlight "marker" over the reading line: a translucent wash (like
+            // the app icon's yellow highlight sitting on top of the text). In a
+            // template image the reduced alpha renders as a lighter grey tint of
+            // the menu-bar colour, so the solid text line shows through darker.
+            let bar = NSRect(x: 1.1, y: 6.1, width: 15.3, height: 3.4)
+            NSColor.black.withAlphaComponent(0.32).setFill()
+            NSBezierPath(roundedRect: bar, xRadius: 1.7, yRadius: 1.7).fill()
+            NSColor.black.setFill() // back to full opacity for the remaining lines
+            textLine(centerY: 7.8, right: 12.4, thickness: 1.3)
+
+            textLine(centerY: 5.0, right: 12.0)
+            textLine(centerY: 2.5, right: 9.0)
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        // A monochrome template glyph in the menu bar (adapts to light/dark and
-        // the menu-bar tint). Falls back to "HB" text if the symbol is ever
-        // unavailable. Not the full-color AppIcon — that renders poorly here.
-        if let glyph = NSImage(systemSymbolName: "highlighter", accessibilityDescription: "Highlight Bar") {
-            glyph.isTemplate = true
-            item.button?.image = glyph
-        } else {
-            item.button?.title = "HB"
-        }
+        // A monochrome, template menu-bar glyph that mirrors the app icon — a
+        // short paragraph of text lines with the middle "reading" line wrapped
+        // in a highlight bar — so the menu bar matches the brand while still
+        // adapting to light/dark menus. (The full-color AppIcon renders poorly
+        // at this size.)
+        item.button?.image = Self.makeMenuBarGlyph()
         item.button?.toolTip = "Highlight Bar"
         // VoiceOver should announce the app name, not the icon.
         item.button?.setAccessibilityLabel("Highlight Bar")
