@@ -12,6 +12,8 @@ internal sealed class OverlayForm : Form
     // System-wide hotkeys
     private const int ToggleHotKeyId = 1;
     private const int LockHotKeyId = 2;
+    private const int NudgeUpHotKeyId = 3;
+    private const int NudgeDownHotKeyId = 4;
     private const int WmHotKey = 0x0312;
     private const int WmDisplayChange = 0x007E;
     private const uint ModControl = 0x0002;
@@ -19,6 +21,8 @@ internal sealed class OverlayForm : Form
     private const uint ModNoRepeat = 0x4000;
     private const uint VkH = 0x48;
     private const uint VkL = 0x4C;
+    private const uint VkUp = 0x26;
+    private const uint VkDown = 0x28;
 
     [DllImport("user32.dll")]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -28,6 +32,8 @@ internal sealed class OverlayForm : Form
 
     public event EventHandler? ToggleRequested;
     public event EventHandler? LockToggleRequested;
+    public event EventHandler? NudgeUpRequested;
+    public event EventHandler? NudgeDownRequested;
     public event EventHandler? DisplayChanged;
 
     private int _barHeight = 44;
@@ -122,12 +128,16 @@ internal sealed class OverlayForm : Form
         base.OnHandleCreated(e);
         RegisterHotKey(Handle, ToggleHotKeyId, ModControl | ModShift | ModNoRepeat, VkH);
         RegisterHotKey(Handle, LockHotKeyId, ModControl | ModShift | ModNoRepeat, VkL);
+        RegisterHotKey(Handle, NudgeUpHotKeyId, ModControl | ModShift | ModNoRepeat, VkUp);
+        RegisterHotKey(Handle, NudgeDownHotKeyId, ModControl | ModShift | ModNoRepeat, VkDown);
     }
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
         UnregisterHotKey(Handle, ToggleHotKeyId);
         UnregisterHotKey(Handle, LockHotKeyId);
+        UnregisterHotKey(Handle, NudgeUpHotKeyId);
+        UnregisterHotKey(Handle, NudgeDownHotKeyId);
         base.OnHandleDestroyed(e);
     }
 
@@ -145,6 +155,18 @@ internal sealed class OverlayForm : Form
             if (hotKeyId == LockHotKeyId)
             {
                 LockToggleRequested?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
+            if (hotKeyId == NudgeUpHotKeyId)
+            {
+                NudgeUpRequested?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
+            if (hotKeyId == NudgeDownHotKeyId)
+            {
+                NudgeDownRequested?.Invoke(this, EventArgs.Empty);
                 return;
             }
         }

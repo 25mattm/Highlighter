@@ -37,6 +37,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _overlay = new OverlayForm();
         _overlay.ToggleRequested += (_, _) => ToggleVisibility();
         _overlay.LockToggleRequested += (_, _) => ToggleLock();
+        _overlay.NudgeUpRequested += (_, _) => Nudge(delta: -10);
+        _overlay.NudgeDownRequested += (_, _) => Nudge(delta: 10);
         _overlay.DisplayChanged += (_, _) => OnDisplayChanged();
         ApplySettingsToOverlay();
         _overlay.Show();
@@ -278,6 +280,24 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             _overlay.FollowCursor(Cursor.Position);
         }
+    }
+
+    private void Nudge(int delta)
+    {
+        // Only nudge when locked
+        if (!_settings.IsLocked || !_settings.LockedAnchorY.HasValue)
+        {
+            return;
+        }
+
+        // Update locked Y position (for horizontal mode)
+        var newY = (int)_settings.LockedAnchorY.Value + delta;
+        _settings.LockedAnchorY = newY;
+
+        // For horizontal mode, nudge affects Y. For vertical mode, it would affect X.
+        // Currently we only support horizontal, so just update Y.
+        UpdateLockState();
+        SaveSettings();
     }
 
     private void ExitApp()
