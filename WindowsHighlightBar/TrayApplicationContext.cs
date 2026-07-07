@@ -117,7 +117,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void UpdateMenuLabels()
     {
         _fontLabelItem.Text = $"Height: {_settings.FontReferenceSize * 2}px ({_settings.FontReferenceSize}pt reference)";
-        _opacityLabelItem.Text = $"Opacity: {_settings.OpacityPercent}% ({100 - _settings.OpacityPercent}% transparent)";
+        _opacityLabelItem.Text = $"Opacity: {_settings.BarOpacityPercent}% ({100 - _settings.BarOpacityPercent}% transparent)";
     }
 
     private void UpdateColorChecks()
@@ -137,7 +137,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void ChangeOpacity(int deltaPercent)
     {
-        _settings.OpacityPercent = Math.Clamp(_settings.OpacityPercent + deltaPercent, 10, 90);
+        _settings.BarOpacityPercent = Math.Clamp(_settings.BarOpacityPercent + deltaPercent, 10, 90);
         ApplySettingsToOverlay();
         SaveSettings();
     }
@@ -150,7 +150,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         _previewColorName = colorName;
-        _overlay.SetAppearance(color, _settings.OpacityPercent);
+        _overlay.SetAppearance(color, _settings.BarOpacityPercent);
     }
 
     private void ClearPreviewColor()
@@ -187,7 +187,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             : _colors["Yellow"];
 
         _overlay.SetHeightFromFontReference(_settings.FontReferenceSize);
-        _overlay.SetAppearance(color, _settings.OpacityPercent);
+        _overlay.SetAppearance(color, _settings.BarOpacityPercent);
         _overlay.FollowCursor(Cursor.Position);
         UpdateMenuLabels();
         UpdateColorChecks();
@@ -196,7 +196,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void NormalizeSettings()
     {
         _settings.FontReferenceSize = Math.Clamp(_settings.FontReferenceSize, 10, 100);
-        _settings.OpacityPercent = Math.Clamp(_settings.OpacityPercent, 10, 90);
+        _settings.BarOpacityPercent = Math.Clamp(_settings.BarOpacityPercent, 10, 90);
 
         if (!_colors.ContainsKey(_settings.ColorName))
         {

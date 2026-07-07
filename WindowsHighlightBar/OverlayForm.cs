@@ -13,6 +13,7 @@ internal sealed class OverlayForm : Form
     // needs no special permission and posts WM_HOTKEY to this window.
     private const int ToggleHotKeyId = 1;
     private const int WmHotKey = 0x0312;
+    private const int WmDisplayChange = 0x007E;
     private const uint ModControl = 0x0002;
     private const uint ModShift = 0x0004;
     private const uint ModNoRepeat = 0x4000;
@@ -25,10 +26,14 @@ internal sealed class OverlayForm : Form
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     public event EventHandler? ToggleRequested;
+    public event EventHandler? DisplayChanged;
 
     private int _barHeight = 44;
     private Color _barColor = Color.Gold;
     private int _opacityPercent = 35;
+    private Point _lastCursorPosition;
+    private bool _isLocked = false;
+    private Point _lockedPosition;
 
     public OverlayForm()
     {
@@ -73,7 +78,30 @@ internal sealed class OverlayForm : Form
         Invalidate();
     }
 
+    public void SetLockedPosition(bool isLocked, Point? lockedPosition = null)
+    {
+        _isLocked = isLocked;
+        if (isLocked && lockedPosition.HasValue)
+        {
+            _lockedPosition = lockedPosition.Value;
+        }
+    }
+
     public void FollowCursor(Point cursorPosition)
+    {
+        _lastCursorPosition = cursorPosition;
+
+        // If locked, use the locked position instead
+        if (_isLocked)
+        {
+            ReclampPositionToScreen(_lockedPosition);
+            return;
+        }
+
+        ReclampPositionToScreen(cursorPosition);
+    }
+
+    private void ReclampPositionToScreen(Point cursorPosition)
     {
         var screen = Screen.FromPoint(cursorPosition);
         var bounds = screen.Bounds;
@@ -104,6 +132,15 @@ internal sealed class OverlayForm : Form
         if (m.Msg == WmHotKey && m.WParam.ToInt32() == ToggleHotKeyId)
         {
             ToggleRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        if (m.Msg == WmDisplayChange)
+        {
+            // Display configuration has changed (resolution, monitor plug/unplug, etc.)
+            // Re-clamp the bar position on the current screen
+            DisplayChanged?.Invoke(this, EventArgs.Empty);
+            FollowCursor(_lastCursorPosition);
             return;
         }
 
