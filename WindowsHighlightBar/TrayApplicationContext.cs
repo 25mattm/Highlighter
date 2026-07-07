@@ -18,6 +18,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly Dictionary<string, ToolStripMenuItem> _colorMenuItems = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<BarShape, ToolStripMenuItem> _barShapeMenuItems = new();
     private readonly Dictionary<BarOrientation, ToolStripMenuItem> _barOrientationMenuItems = new();
+    private readonly Dictionary<HighlightMode, ToolStripMenuItem> _highlightModeMenuItems = new();
     private readonly OverlayForm _overlay;
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _followTimer;
@@ -32,6 +33,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private Point _lockAnchorPoint;
     private int _scrollAccumulation = 0;
     private System.Windows.Forms.Timer? _scrollSettleTimer;
+    private readonly List<ScreenTintOverlayForm> _screenTintOverlays = new();
+    private SpotlightOverlayForm? _spotlightOverlay;
 
     public TrayApplicationContext()
     {
@@ -70,6 +73,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             {
                 _overlay.FollowCursor(Cursor.Position);
             }
+            // Update overlay positions if in spotlight or tint mode
+            UpdateSpotlightPosition();
         };
         _followTimer.Start();
     }
@@ -120,6 +125,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
             barOrientationHeader.DropDownItems.Add(item);
         }
 
+        var modeHeader = new ToolStripMenuItem("Display Mode");
+        foreach (var mode in new[] { HighlightMode.BarOnly, HighlightMode.BarAndSpotlight, HighlightMode.ScreenTint })
+        {
+            var modeName = mode == HighlightMode.BarOnly ? "Bar only" :
+                          mode == HighlightMode.BarAndSpotlight ? "Bar + spotlight" :
+                          "Screen tint";
+            var item = new ToolStripMenuItem(modeName);
+            item.Click += (_, _) => SelectHighlightMode(mode, persist: true);
+            _highlightModeMenuItems[mode] = item;
+            modeHeader.DropDownItems.Add(item);
+        }
+
         _lockItem.Click += (_, _) => ToggleLock();
         _visibilityItem.Click += (_, _) => ToggleVisibility();
 
@@ -134,6 +151,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(colorHeader);
         menu.Items.Add(barShapeHeader);
         menu.Items.Add(barOrientationHeader);
+        menu.Items.Add(modeHeader);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_lockItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -164,15 +182,29 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             item.Checked = name.Equals(_settings.ColorName, StringComparison.OrdinalIgnoreCase);
         }
+    }
 
+    private void UpdateShapeChecks()
+    {
         foreach (var (shape, item) in _barShapeMenuItems)
         {
             item.Checked = shape == _settings.BarShape;
         }
+    }
 
+    private void UpdateOrientationChecks()
+    {
         foreach (var (orientation, item) in _barOrientationMenuItems)
         {
             item.Checked = orientation == _settings.BarOrientation;
+        }
+    }
+
+    private void UpdateModeChecks()
+    {
+        foreach (var (mode, item) in _highlightModeMenuItems)
+        {
+            item.Checked = mode == _settings.Mode;
         }
     }
 
@@ -248,6 +280,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void SelectHighlightMode(HighlightMode mode, bool persist)
+    {
+        _settings.Mode = mode;
+        ApplySettingsToOverlay();
+        if (persist)
+        {
+            SaveSettings();
+        }
+    }
+
     private void ApplySettingsToOverlay()
     {
         var color = _colors.TryGetValue(_settings.ColorName, out var selectedColor)
@@ -260,8 +302,112 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _overlay.SetAppearance(color, _settings.BarOpacityPercent);
         UpdateLockState();
         _overlay.FollowCursor(Cursor.Position);
+        UpdateOverlays();
         UpdateMenuLabels();
         UpdateColorChecks();
+        UpdateModeChecks();
+        UpdateShapeChecks();
+        UpdateOrientationChecks();
+    }
+
+    private void UpdateOverlays()
+    {
+        // Hide all screen tint overlays
+        foreach (var overlay in _screenTintOverlays)
+        {
+            overlay.Hide();
+        }
+
+        // Hide spotlight overlay
+        _spotlightOverlay?.Hide();
+
+        if (_barHidden)
+        {
+            return;
+        }
+
+        // Show overlays based on mode
+        if (_settings.Mode == HighlightMode.ScreenTint)
+        {
+            ShowScreenTintOverlay();
+        }
+        else if (_settings.Mode == HighlightMode.BarAndSpotlight)
+        {
+            ShowSpotlightOverlay();
+        }
+    }
+
+    private void ShowScreenTintOverlay()
+    {
+        // Dispose existing overlays
+        foreach (var overlay in _screenTintOverlays)
+        {
+            overlay.Dispose();
+        }
+        _screenTintOverlays.Clear();
+
+        var tintColor = _colors.TryGetValue(_settings.TintColorName, out var selectedTintColor)
+            ? selectedTintColor
+            : _colors["Yellow"];
+
+        // Create one overlay per monitor
+        foreach (var screen in Screen.AllScreens)
+        {
+            var overlay = new ScreenTintOverlayForm(screen);
+            overlay.SetTintColor(tintColor);
+            overlay.SetOpacity(_settings.TintOpacityPercent);
+            overlay.Show();
+            _screenTintOverlays.Add(overlay);
+        }
+    }
+
+    private void ShowSpotlightOverlay()
+    {
+        // Dispose existing overlays
+        _spotlightOverlay?.Dispose();
+        _spotlightOverlay = null;
+
+        var dimColor = _colors.TryGetValue(_settings.SpotlightColorName, out var selectedDimColor)
+            ? selectedDimColor
+            : _colors["Gray"];
+
+        // Create one overlay per monitor
+        // For now, create one overlay on the monitor where the bar is
+        var barScreen = Screen.FromPoint(_overlay.Location);
+        var overlay = new SpotlightOverlayForm(barScreen);
+        overlay.SetDimOpacity(_settings.SpotlightOpacityPercent);
+
+        // Get bar position and size to calculate spotlight rectangle
+        var barBounds = _overlay.Bounds;
+        var spotlightRect = new Rectangle(
+            barBounds.X - barScreen.Bounds.X,  // Relative to overlay's monitor
+            barBounds.Y - barScreen.Bounds.Y,
+            barBounds.Width,
+            barBounds.Height
+        );
+
+        overlay.SetSpotlight(spotlightRect, dimColor);
+        overlay.Show();
+        _spotlightOverlay = overlay;
+    }
+
+    private void UpdateSpotlightPosition()
+    {
+        // Update spotlight position if it's active
+        if (_settings.Mode == HighlightMode.BarAndSpotlight && _spotlightOverlay != null && !_barHidden)
+        {
+            var barBounds = _overlay.Bounds;
+            var barScreen = Screen.FromPoint(barBounds.Location);
+
+            var spotlightRect = new Rectangle(
+                barBounds.X - barScreen.Bounds.X,
+                barBounds.Y - barScreen.Bounds.Y,
+                barBounds.Width,
+                barBounds.Height
+            );
+
+            _spotlightOverlay.SetSpotlight(spotlightRect, Color.Gray);
+        }
     }
 
     private void NormalizeSettings()
@@ -286,11 +432,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (_barHidden)
         {
             _overlay.Hide();
+            foreach (var overlay in _screenTintOverlays)
+            {
+                overlay.Hide();
+            }
+            _spotlightOverlay?.Hide();
         }
         else
         {
             _overlay.Show();
             _overlay.FollowCursor(Cursor.Position);
+            UpdateOverlays();
         }
 
         _visibilityItem.Text = _barHidden ? "Show Bar (Ctrl+Shift+H)" : "Hide Bar (Ctrl+Shift+H)";
@@ -451,6 +603,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _followTimer.Stop();
         _scrollSettleTimer?.Stop();
+        foreach (var overlay in _screenTintOverlays)
+        {
+            overlay.Dispose();
+        }
+        _spotlightOverlay?.Dispose();
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _overlay.Close();
