@@ -29,6 +29,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _opacityLabelItem = new() { Enabled = false };
     private readonly ToolStripMenuItem _visibilityItem = new("Hide Bar (Ctrl+Shift+H)");
     private readonly ToolStripMenuItem _lockItem = new("Lock Position");
+    private readonly ToolStripMenuItem _startupItem = new("Launch at startup");
 
     private string? _previewColorName;
     private bool _barHidden;
@@ -69,6 +70,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         UpdateMenuLabels();
         UpdateColorChecks();
         UpdateLockState();
+        UpdateStartupState();
 
         _followTimer = new System.Windows.Forms.Timer { Interval = 16 };
         _followTimer.Tick += (_, _) =>
@@ -169,6 +171,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _lockItem.Click += (_, _) => ToggleLock();
         _visibilityItem.Click += (_, _) => ToggleVisibility();
+        _startupItem.Click += (_, _) => ToggleStartup();
 
         var quitItem = new ToolStripMenuItem("Quit Highlight Bar", null, (_, _) => ExitApp());
 
@@ -185,6 +188,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(profileHeader);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_lockItem);
+        menu.Items.Add(_startupItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_visibilityItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -480,6 +484,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             _settings.ColorName = "Yellow";
         }
+
+        // Sync registry with saved settings
+        _settings.LaunchAtLogin = RegistryUtil.IsLaunchAtStartupEnabled();
     }
 
     private void SaveSettings()
@@ -544,6 +551,22 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         _overlay.SetLockedPosition(_settings.IsLocked, lockedPos);
+    }
+
+    private void ToggleStartup()
+    {
+        _settings.LaunchAtLogin = !_settings.LaunchAtLogin;
+
+        // Write to Windows registry
+        RegistryUtil.SetLaunchAtStartup(_settings.LaunchAtLogin);
+
+        UpdateStartupState();
+        SaveSettings();
+    }
+
+    private void UpdateStartupState()
+    {
+        _startupItem.Checked = _settings.LaunchAtLogin;
     }
 
     private void OnDisplayChanged()
