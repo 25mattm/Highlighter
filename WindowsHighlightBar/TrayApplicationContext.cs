@@ -52,6 +52,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _overlay.ScrollRequested += (_, e) => OnScroll(e);
         _overlay.KeyboardTrackingRequested += (_, e) => OnKeyboard(e);
         _overlay.DisplayChanged += (_, _) => OnDisplayChanged();
+        _overlay.HotKeyConflictDetected += (_, e) => OnHotKeyConflict(e);
         ApplySettingsToOverlay();
         _overlay.Show();
 
@@ -657,6 +658,24 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             _overlay.FollowCursor(offset);
         }
+    }
+
+    private void OnHotKeyConflict(HotKeyConflictEventArgs e)
+    {
+        // Only show alert once per session
+        if (_settings.HasShownHotKeyConflictAlert)
+        {
+            return;
+        }
+
+        var message = "Some Highlight Bar hotkeys are already in use by another application:\n\n" +
+                      e.ConflictDescription + "\n\n" +
+                      "You can still use the system tray menu to control the highlight bar.";
+
+        MessageBox.Show(message, "Hotkey Conflict", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+        _settings.HasShownHotKeyConflictAlert = true;
+        SaveSettings();
     }
 
     private void ExitApp()

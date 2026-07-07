@@ -5,6 +5,16 @@ using System.Windows.Forms;
 
 namespace HighlightBar.Windows;
 
+public class HotKeyConflictEventArgs : EventArgs
+{
+    public string ConflictDescription { get; }
+
+    public HotKeyConflictEventArgs(string description)
+    {
+        ConflictDescription = description;
+    }
+}
+
 public class KeyboardTrackingEventArgs : EventArgs
 {
     public int KeyCode { get; }
@@ -101,6 +111,7 @@ internal sealed class OverlayForm : Form
     public event EventHandler? DisplayChanged;
     public event EventHandler<ScrollEventArgs>? ScrollRequested;
     public event EventHandler<KeyboardTrackingEventArgs>? KeyboardTrackingRequested;
+    public event EventHandler<HotKeyConflictEventArgs>? HotKeyConflictDetected;
 
     private int _barHeight = 44;
     private BarShape _barShape = BarShape.Ruler;
@@ -225,10 +236,28 @@ internal sealed class OverlayForm : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        RegisterHotKey(Handle, ToggleHotKeyId, ModControl | ModShift | ModNoRepeat, VkH);
-        RegisterHotKey(Handle, LockHotKeyId, ModControl | ModShift | ModNoRepeat, VkL);
-        RegisterHotKey(Handle, NudgeUpHotKeyId, ModControl | ModShift | ModNoRepeat, VkUp);
-        RegisterHotKey(Handle, NudgeDownHotKeyId, ModControl | ModShift | ModNoRepeat, VkDown);
+
+        var conflicts = new List<string>();
+
+        // Register hotkeys and track any failures
+        if (!RegisterHotKey(Handle, ToggleHotKeyId, ModControl | ModShift | ModNoRepeat, VkH))
+            conflicts.Add("Ctrl+Shift+H (Toggle)");
+
+        if (!RegisterHotKey(Handle, LockHotKeyId, ModControl | ModShift | ModNoRepeat, VkL))
+            conflicts.Add("Ctrl+Shift+L (Lock)");
+
+        if (!RegisterHotKey(Handle, NudgeUpHotKeyId, ModControl | ModShift | ModNoRepeat, VkUp))
+            conflicts.Add("Ctrl+Shift+↑ (Nudge up)");
+
+        if (!RegisterHotKey(Handle, NudgeDownHotKeyId, ModControl | ModShift | ModNoRepeat, VkDown))
+            conflicts.Add("Ctrl+Shift+↓ (Nudge down)");
+
+        // Notify about conflicts if any occurred
+        if (conflicts.Count > 0)
+        {
+            var description = string.Join("\n", conflicts);
+            HotKeyConflictDetected?.Invoke(this, new HotKeyConflictEventArgs(description));
+        }
 
         // Set up low-level hooks for input tracking
         var module = GetModuleHandle(null);
