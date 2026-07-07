@@ -17,6 +17,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private readonly Dictionary<string, ToolStripMenuItem> _colorMenuItems = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<BarShape, ToolStripMenuItem> _barShapeMenuItems = new();
+    private readonly Dictionary<BarOrientation, ToolStripMenuItem> _barOrientationMenuItems = new();
     private readonly OverlayForm _overlay;
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _followTimer;
@@ -105,6 +106,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
             barShapeHeader.DropDownItems.Add(item);
         }
 
+        var barOrientationHeader = new ToolStripMenuItem("Orientation");
+        foreach (var orientation in new[] { BarOrientation.Horizontal, BarOrientation.Vertical })
+        {
+            var orientationName = orientation == BarOrientation.Horizontal ? "Horizontal" : "Vertical (column)";
+            var item = new ToolStripMenuItem(orientationName);
+            item.Click += (_, _) => SelectBarOrientation(orientation, persist: true);
+            _barOrientationMenuItems[orientation] = item;
+            barOrientationHeader.DropDownItems.Add(item);
+        }
+
         _lockItem.Click += (_, _) => ToggleLock();
         _visibilityItem.Click += (_, _) => ToggleVisibility();
 
@@ -118,6 +129,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(colorHeader);
         menu.Items.Add(barShapeHeader);
+        menu.Items.Add(barOrientationHeader);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_lockItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -152,6 +164,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         foreach (var (shape, item) in _barShapeMenuItems)
         {
             item.Checked = shape == _settings.BarShape;
+        }
+
+        foreach (var (orientation, item) in _barOrientationMenuItems)
+        {
+            item.Checked = orientation == _settings.BarOrientation;
         }
     }
 
@@ -217,6 +234,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void SelectBarOrientation(BarOrientation orientation, bool persist)
+    {
+        _settings.BarOrientation = orientation;
+        ApplySettingsToOverlay();
+        if (persist)
+        {
+            SaveSettings();
+        }
+    }
+
     private void ApplySettingsToOverlay()
     {
         var color = _colors.TryGetValue(_settings.ColorName, out var selectedColor)
@@ -225,6 +252,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _overlay.SetHeightFromFontReference(_settings.FontReferenceSize);
         _overlay.SetBarShape(_settings.BarShape);
+        _overlay.SetBarOrientation(_settings.BarOrientation);
         _overlay.SetAppearance(color, _settings.BarOpacityPercent);
         UpdateLockState();
         _overlay.FollowCursor(Cursor.Position);
@@ -313,17 +341,34 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void Nudge(int delta)
     {
         // Only nudge when locked
-        if (!_settings.IsLocked || !_settings.LockedAnchorY.HasValue)
+        if (!_settings.IsLocked)
         {
             return;
         }
 
-        // Update locked Y position (for horizontal mode)
-        var newY = (int)_settings.LockedAnchorY.Value + delta;
-        _settings.LockedAnchorY = newY;
+        if (_settings.BarOrientation == BarOrientation.Vertical)
+        {
+            // For vertical mode, nudge affects X
+            if (!_settings.LockedAnchorX.HasValue)
+            {
+                return;
+            }
 
-        // For horizontal mode, nudge affects Y. For vertical mode, it would affect X.
-        // Currently we only support horizontal, so just update Y.
+            var newX = (int)_settings.LockedAnchorX.Value + delta;
+            _settings.LockedAnchorX = newX;
+        }
+        else
+        {
+            // For horizontal mode, nudge affects Y
+            if (!_settings.LockedAnchorY.HasValue)
+            {
+                return;
+            }
+
+            var newY = (int)_settings.LockedAnchorY.Value + delta;
+            _settings.LockedAnchorY = newY;
+        }
+
         UpdateLockState();
         SaveSettings();
     }

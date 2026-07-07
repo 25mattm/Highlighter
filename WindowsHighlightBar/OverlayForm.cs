@@ -38,6 +38,7 @@ internal sealed class OverlayForm : Form
 
     private int _barHeight = 44;
     private BarShape _barShape = BarShape.Ruler;
+    private BarOrientation _barOrientation = BarOrientation.Horizontal;
     private Color _barColor = Color.Gold;
     private int _opacityPercent = 35;
     private Point _lastCursorPosition;
@@ -84,6 +85,12 @@ internal sealed class OverlayForm : Form
         Invalidate();
     }
 
+    public void SetBarOrientation(BarOrientation orientation)
+    {
+        _barOrientation = orientation;
+        Invalidate();
+    }
+
     public void SetAppearance(Color color, int opacityPercent)
     {
         _barColor = color;
@@ -120,13 +127,28 @@ internal sealed class OverlayForm : Form
     {
         var screen = Screen.FromPoint(cursorPosition);
         var bounds = screen.Bounds;
-        var y = cursorPosition.Y - (_barHeight / 2);
-        y = Math.Clamp(y, bounds.Top, bounds.Bottom - _barHeight);
 
-        var newBounds = new Rectangle(bounds.Left, y, bounds.Width, _barHeight);
-        if (Bounds != newBounds)
+        if (_barOrientation == BarOrientation.Vertical)
         {
-            Bounds = newBounds;
+            // For vertical mode: bar follows cursor X, spans screen height
+            var x = cursorPosition.X - (_barHeight / 2);
+            x = Math.Clamp(x, bounds.Left, bounds.Right - _barHeight);
+            var newBounds = new Rectangle(x, bounds.Top, _barHeight, bounds.Height);
+            if (Bounds != newBounds)
+            {
+                Bounds = newBounds;
+            }
+        }
+        else
+        {
+            // For horizontal mode: bar follows cursor Y, spans screen width (default)
+            var y = cursorPosition.Y - (_barHeight / 2);
+            y = Math.Clamp(y, bounds.Top, bounds.Bottom - _barHeight);
+            var newBounds = new Rectangle(bounds.Left, y, bounds.Width, _barHeight);
+            if (Bounds != newBounds)
+            {
+                Bounds = newBounds;
+            }
         }
     }
 
