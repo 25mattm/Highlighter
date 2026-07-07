@@ -19,10 +19,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly Dictionary<BarShape, ToolStripMenuItem> _barShapeMenuItems = new();
     private readonly Dictionary<BarOrientation, ToolStripMenuItem> _barOrientationMenuItems = new();
     private readonly Dictionary<HighlightMode, ToolStripMenuItem> _highlightModeMenuItems = new();
+    private readonly Dictionary<string, ToolStripMenuItem> _profileMenuItems = new(StringComparer.OrdinalIgnoreCase);
     private readonly OverlayForm _overlay;
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _followTimer;
     private readonly AppSettings _settings;
+    private readonly ProfileStore _profileStore;
     private readonly ToolStripMenuItem _fontLabelItem = new() { Enabled = false };
     private readonly ToolStripMenuItem _opacityLabelItem = new() { Enabled = false };
     private readonly ToolStripMenuItem _visibilityItem = new("Hide Bar (Ctrl+Shift+H)");
@@ -39,6 +41,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     public TrayApplicationContext()
     {
         _settings = SettingsStore.Load();
+        _profileStore = new ProfileStore();
         NormalizeSettings();
 
         _overlay = new OverlayForm();
@@ -137,6 +140,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
             modeHeader.DropDownItems.Add(item);
         }
 
+        var profileHeader = new ToolStripMenuItem("Profiles");
+        foreach (var profile in _profileStore.GetAllProfiles())
+        {
+            var item = new ToolStripMenuItem(profile.Name);
+            item.Click += (_, _) => ApplyProfile(profile, persist: true);
+            _profileMenuItems[profile.Name] = item;
+            profileHeader.DropDownItems.Add(item);
+        }
+
         _lockItem.Click += (_, _) => ToggleLock();
         _visibilityItem.Click += (_, _) => ToggleVisibility();
 
@@ -152,6 +164,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(barShapeHeader);
         menu.Items.Add(barOrientationHeader);
         menu.Items.Add(modeHeader);
+        menu.Items.Add(profileHeader);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_lockItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -287,6 +300,36 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (persist)
         {
             SaveSettings();
+        }
+    }
+
+    private void ApplyProfile(Profile profile, bool persist)
+    {
+        // Copy all settings from the profile
+        _settings.FontReferenceSize = profile.Settings.FontReferenceSize;
+        _settings.BarOpacityPercent = profile.Settings.BarOpacityPercent;
+        _settings.ColorName = profile.Settings.ColorName;
+        _settings.IsLocked = profile.Settings.IsLocked;
+        _settings.LockedAnchorX = profile.Settings.LockedAnchorX;
+        _settings.LockedAnchorY = profile.Settings.LockedAnchorY;
+        _settings.Mode = profile.Settings.Mode;
+        _settings.SpotlightColorName = profile.Settings.SpotlightColorName;
+        _settings.SpotlightOpacityPercent = profile.Settings.SpotlightOpacityPercent;
+        _settings.TintColorName = profile.Settings.TintColorName;
+        _settings.TintOpacityPercent = profile.Settings.TintOpacityPercent;
+        _settings.BarShape = profile.Settings.BarShape;
+        _settings.BarOrientation = profile.Settings.BarOrientation;
+        _settings.TrackingSource = profile.Settings.TrackingSource;
+
+        ApplySettingsToOverlay();
+
+        if (persist)
+        {
+            SaveSettings();
+            if (!profile.IsBuiltIn)
+            {
+                _profileStore.SetLastAppliedName(profile.Name);
+            }
         }
     }
 
