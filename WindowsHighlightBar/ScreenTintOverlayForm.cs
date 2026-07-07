@@ -32,6 +32,11 @@ internal sealed class ScreenTintOverlayForm : Form
 
         // Allow events to pass through to windows below
         SetStyle(ControlStyles.SupportsTransparentBackColor, true);
+
+        // Accessibility
+        AccessibleName = "Screen tint overlay";
+        AccessibleDescription = "Screen tint overlay for reading mode";
+        AccessibleRole = AccessibleRole.Window;
     }
 
     protected override void OnPaint(PaintEventArgs e)

@@ -136,6 +136,11 @@ internal sealed class OverlayForm : Form
         ResizeRedraw = true;
         BackColor = _barColor;
         Opacity = _opacityPercent / 100.0;
+
+        // Set accessibility properties for screen readers
+        AccessibleName = "Highlight Bar";
+        AccessibleDescription = "A reading guide overlay that follows your cursor. Use Ctrl+Shift+H to toggle visibility, Ctrl+Shift+L to lock position.";
+        AccessibleRole = AccessibleRole.Window;
     }
 
     protected override bool ShowWithoutActivation => true;

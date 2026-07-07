@@ -34,6 +34,11 @@ internal sealed class SpotlightOverlayForm : Form
 
         // Allow events to pass through to windows below
         SetStyle(ControlStyles.SupportsTransparentBackColor, true);
+
+        // Accessibility
+        AccessibleName = "Spotlight overlay";
+        AccessibleDescription = "Spotlight overlay that dims the screen and highlights the reading bar area";
+        AccessibleRole = AccessibleRole.Window;
     }
 
     protected override void OnPaint(PaintEventArgs e)

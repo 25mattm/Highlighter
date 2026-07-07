@@ -5,6 +5,7 @@ namespace HighlightBar.Windows;
 
 /// <summary>
 /// A welcome window shown on first launch explaining hotkeys and features.
+/// Designed with accessibility: keyboard navigation, screen reader support.
 /// </summary>
 internal sealed class OnboardingForm : Form
 {
@@ -22,13 +23,20 @@ internal sealed class OnboardingForm : Form
         Text = "Welcome to Highlight Bar";
         ShowIcon = true;
 
+        // Set accessible name for the form for screen readers
+        AccessibleName = "Welcome to Highlight Bar";
+        AccessibleDescription = "First-run onboarding screen explaining how to use Highlight Bar";
+
         var titleLabel = new Label
         {
             Text = "Highlight Bar",
             Font = new Font(SystemFonts.DefaultFont.FontFamily, 16, FontStyle.Bold),
             AutoSize = true,
-            Location = new Point(20, 20)
+            Location = new Point(20, 20),
+            TabStop = false
         };
+        titleLabel.AccessibleName = "Highlight Bar";
+        titleLabel.AccessibleRole = AccessibleRole.TitleBar;
 
         var bodyText =
             "Highlight Bar is a reading guide that follows your cursor and stays on top of every window — and it is fully click-through, so it never blocks clicks, scrolling, or typing.\r\n\r\n" +
@@ -48,6 +56,8 @@ internal sealed class OnboardingForm : Form
             Height = 300,
             TabStop = false
         };
+        bodyLabel.AccessibleName = "Features and hotkeys information";
+        bodyLabel.AccessibleRole = AccessibleRole.StaticText;
 
         var okButton = new Button
         {
@@ -58,12 +68,16 @@ internal sealed class OnboardingForm : Form
             Height = 30
         };
         okButton.Click += (_, _) => _dismissed = true;
+        okButton.AccessibleName = "Got it (dismiss welcome)";
+        okButton.AccessibleDescription = "Dismiss the welcome screen and start using Highlight Bar";
+        okButton.TabIndex = 0;
 
         Controls.Add(titleLabel);
         Controls.Add(bodyLabel);
         Controls.Add(okButton);
 
         AcceptButton = okButton;
+        CancelButton = okButton;
     }
 
     public bool WasDismissed => _dismissed;
