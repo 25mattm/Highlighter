@@ -80,6 +80,23 @@ internal sealed class TrayApplicationContext : ApplicationContext
             UpdateSpotlightPosition();
         };
         _followTimer.Start();
+
+        // Show onboarding on first launch
+        if (!_settings.HasSeenOnboarding)
+        {
+            ShowOnboarding();
+        }
+    }
+
+    private void ShowOnboarding()
+    {
+        using (var form = new OnboardingForm())
+        {
+            form.ShowDialog();
+        }
+
+        _settings.HasSeenOnboarding = true;
+        SaveSettings();
     }
 
     private ContextMenuStrip BuildMenu()
