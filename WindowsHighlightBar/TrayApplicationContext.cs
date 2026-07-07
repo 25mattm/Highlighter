@@ -30,6 +30,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private string? _previewColorName;
     private bool _barHidden;
     private Point _lockAnchorPoint;
+    private int _scrollAccumulation = 0;
+    private System.Windows.Forms.Timer? _scrollSettleTimer;
 
     public TrayApplicationContext()
     {
@@ -41,6 +43,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _overlay.LockToggleRequested += (_, _) => ToggleLock();
         _overlay.NudgeUpRequested += (_, _) => Nudge(delta: -10);
         _overlay.NudgeDownRequested += (_, _) => Nudge(delta: 10);
+        _overlay.ScrollRequested += (_, e) => OnScroll(e);
+        _overlay.KeyboardTrackingRequested += (_, e) => OnKeyboard(e);
         _overlay.DisplayChanged += (_, _) => OnDisplayChanged();
         ApplySettingsToOverlay();
         _overlay.Show();
@@ -62,7 +66,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _followTimer = new System.Windows.Forms.Timer { Interval = 16 };
         _followTimer.Tick += (_, _) =>
         {
-            if (!_barHidden)
+            if (!_barHidden && _settings.TrackingSource == TrackingSource.Mouse)
             {
                 _overlay.FollowCursor(Cursor.Position);
             }
@@ -373,9 +377,80 @@ internal sealed class TrayApplicationContext : ApplicationContext
         SaveSettings();
     }
 
+    private void OnScroll(ScrollEventArgs e)
+    {
+        // Only process scroll when tracking source is Scroll
+        if (_barHidden || _settings.TrackingSource != TrackingSource.Scroll)
+        {
+            return;
+        }
+
+        // Accumulate scroll delta (each notch is 120)
+        _scrollAccumulation += e.Delta;
+
+        // Convert scroll accumulation to pixels (roughly 20 pixels per notch)
+        var barPosition = new Point(
+            Cursor.Position.X,
+            Cursor.Position.Y + (_scrollAccumulation / 120) * 20
+        );
+
+        _overlay.FollowCursor(barPosition);
+
+        // Reset the settle timer
+        _scrollSettleTimer?.Stop();
+        _scrollSettleTimer = new System.Windows.Forms.Timer { Interval = 100 };
+        _scrollSettleTimer.Tick += (_, _) =>
+        {
+            // Reset accumulation after scroll settles
+            _scrollAccumulation = 0;
+            _scrollSettleTimer.Stop();
+        };
+        _scrollSettleTimer.Start();
+    }
+
+    private void OnKeyboard(KeyboardTrackingEventArgs e)
+    {
+        // Only process keyboard when tracking source is Keyboard and not locked
+        if (_barHidden || _settings.TrackingSource != TrackingSource.Keyboard || _settings.IsLocked)
+        {
+            return;
+        }
+
+        // Determine offset direction based on orientation and key code
+        var offset = new Point(0, 0);
+        const int VK_UP = 0x26;
+        const int VK_DOWN = 0x28;
+        const int VK_LEFT = 0x25;
+        const int VK_RIGHT = 0x27;
+
+        if (_settings.BarOrientation == BarOrientation.Horizontal)
+        {
+            // For horizontal bar, use up/down arrow keys
+            if (e.KeyCode == VK_UP)
+                offset = new Point(Cursor.Position.X, Cursor.Position.Y - 20);
+            else if (e.KeyCode == VK_DOWN)
+                offset = new Point(Cursor.Position.X, Cursor.Position.Y + 20);
+        }
+        else
+        {
+            // For vertical bar, use left/right arrow keys
+            if (e.KeyCode == VK_LEFT)
+                offset = new Point(Cursor.Position.X - 20, Cursor.Position.Y);
+            else if (e.KeyCode == VK_RIGHT)
+                offset = new Point(Cursor.Position.X + 20, Cursor.Position.Y);
+        }
+
+        // Only move if we determined a valid direction
+        if (offset != Point.Empty)
+        {
+            _overlay.FollowCursor(offset);
+        }
+    }
+
     private void ExitApp()
     {
         _followTimer.Stop();
+        _scrollSettleTimer?.Stop();
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _overlay.Close();
