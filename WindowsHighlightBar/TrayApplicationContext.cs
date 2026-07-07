@@ -89,6 +89,41 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             ShowOnboarding();
         }
+
+        // Check for updates asynchronously
+        _ = CheckForUpdatesAsync();
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            var updateInfo = await UpdateChecker.GetLatestUpdateInfo();
+            if (updateInfo != null && await UpdateChecker.IsUpdateAvailable())
+            {
+                // Update is available - add menu item or show notification
+                ShowUpdateNotification(updateInfo);
+            }
+        }
+        catch
+        {
+            // Silently ignore update check failures
+        }
+    }
+
+    private void ShowUpdateNotification(UpdateInfo updateInfo)
+    {
+        var result = MessageBox.Show(
+            $"Highlight Bar {updateInfo.Version} is available!\n\nWould you like to download it?",
+            "Update Available",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Information
+        );
+
+        if (result == DialogResult.Yes)
+        {
+            UpdateChecker.OpenUpdatePage(updateInfo.ReleaseUrl);
+        }
     }
 
     private void ShowOnboarding()
