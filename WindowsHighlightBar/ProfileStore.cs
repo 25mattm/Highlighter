@@ -158,14 +158,16 @@ public sealed class ProfileStore
             }
 
             var json = File.ReadAllText(settingsPath);
-            var doc = System.Text.Json.JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty(LastAppliedKey, out var element) &&
-                element.ValueKind == System.Text.Json.JsonValueKind.String)
+            using (var doc = System.Text.Json.JsonDocument.Parse(json))
             {
-                return element.GetString();
-            }
+                if (doc.RootElement.TryGetProperty(LastAppliedKey, out var element) &&
+                    element.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    return element.GetString();
+                }
 
-            return null;
+                return null;
+            }
         }
         catch
         {
@@ -180,7 +182,6 @@ public sealed class ProfileStore
     {
         try
         {
-            var settingsStore = new SettingsStore();
             // Store this in a metadata file or in a separate settings section
             var metaPath = Path.Combine(_configDirectory, "profile-meta.json");
             var meta = new Dictionary<string, string>();

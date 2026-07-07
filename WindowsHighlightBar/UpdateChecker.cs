@@ -45,43 +45,45 @@ public sealed class UpdateChecker
         try
         {
             var response = await _httpClient.GetStringAsync(GitHubApiUrl);
-            var doc = JsonDocument.Parse(response);
-            var root = doc.RootElement;
-
-            var version = root.GetProperty("tag_name").GetString();
-            var name = root.GetProperty("name").GetString();
-            var body = root.GetProperty("body").GetString();
-            var htmlUrl = root.GetProperty("html_url").GetString();
-
-            if (version == null || name == null)
-                return null;
-
-            // Extract download URL from assets
-            string? downloadUrl = null;
-            if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+            using (var doc = JsonDocument.Parse(response))
             {
-                foreach (var asset in assets.EnumerateArray())
+                var root = doc.RootElement;
+
+                var version = root.GetProperty("tag_name").GetString();
+                var name = root.GetProperty("name").GetString();
+                var body = root.GetProperty("body").GetString();
+                var htmlUrl = root.GetProperty("html_url").GetString();
+
+                if (version == null || name == null)
+                    return null;
+
+                // Extract download URL from assets
+                string? downloadUrl = null;
+                if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
                 {
-                    if (asset.TryGetProperty("name", out var assetName) &&
-                        assetName.GetString()?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true)
+                    foreach (var asset in assets.EnumerateArray())
                     {
-                        if (asset.TryGetProperty("browser_download_url", out var url))
+                        if (asset.TryGetProperty("name", out var assetName) &&
+                            assetName.GetString()?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true)
                         {
-                            downloadUrl = url.GetString();
-                            break;
+                            if (asset.TryGetProperty("browser_download_url", out var url))
+                            {
+                                downloadUrl = url.GetString();
+                                break;
+                            }
                         }
                     }
                 }
-            }
 
-            return new UpdateInfo
-            {
-                Version = version,
-                Name = name,
-                Notes = body ?? string.Empty,
-                DownloadUrl = downloadUrl,
-                ReleaseUrl = htmlUrl ?? string.Empty
-            };
+                return new UpdateInfo
+                {
+                    Version = version,
+                    Name = name,
+                    Notes = body ?? string.Empty,
+                    DownloadUrl = downloadUrl,
+                    ReleaseUrl = htmlUrl ?? string.Empty
+                };
+            }
         }
         catch
         {
@@ -97,8 +99,10 @@ public sealed class UpdateChecker
         try
         {
             var response = await _httpClient.GetStringAsync(GitHubApiUrl);
-            var doc = JsonDocument.Parse(response);
-            return doc.RootElement.GetProperty("tag_name").GetString()?.TrimStart('v');
+            using (var doc = JsonDocument.Parse(response))
+            {
+                return doc.RootElement.GetProperty("tag_name").GetString()?.TrimStart('v');
+            }
         }
         catch
         {

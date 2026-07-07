@@ -420,7 +420,18 @@ internal sealed class OverlayForm : Form
                 var scrollDelta = (short)((hookStruct.mouseData >> 16) & 0xffff);
                 if (scrollDelta != 0)
                 {
-                    ScrollRequested?.Invoke(this, new ScrollEventArgs(ScrollEventType.SmallIncrement, scrollDelta));
+                    // Marshal to UI thread since hooks run on arbitrary system thread
+                    if (InvokeRequired)
+                    {
+                        Invoke((Action)(() =>
+                        {
+                            ScrollRequested?.Invoke(this, new ScrollEventArgs(ScrollEventType.SmallIncrement, scrollDelta));
+                        }));
+                    }
+                    else
+                    {
+                        ScrollRequested?.Invoke(this, new ScrollEventArgs(ScrollEventType.SmallIncrement, scrollDelta));
+                    }
                 }
             }
             catch
@@ -443,7 +454,18 @@ internal sealed class OverlayForm : Form
                 if (hookStruct.vkCode == VK_UP || hookStruct.vkCode == VK_DOWN ||
                     hookStruct.vkCode == VK_LEFT || hookStruct.vkCode == VK_RIGHT)
                 {
-                    KeyboardTrackingRequested?.Invoke(this, new KeyboardTrackingEventArgs((int)hookStruct.vkCode));
+                    // Marshal to UI thread since hooks run on arbitrary system thread
+                    if (InvokeRequired)
+                    {
+                        Invoke((Action)(() =>
+                        {
+                            KeyboardTrackingRequested?.Invoke(this, new KeyboardTrackingEventArgs((int)hookStruct.vkCode));
+                        }));
+                    }
+                    else
+                    {
+                        KeyboardTrackingRequested?.Invoke(this, new KeyboardTrackingEventArgs((int)hookStruct.vkCode));
+                    }
                 }
             }
             catch

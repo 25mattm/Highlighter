@@ -506,7 +506,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 barBounds.Height
             );
 
-            _spotlightOverlay.SetSpotlight(spotlightRect, Color.Gray);
+            var dimColor = _colors.TryGetValue(_settings.SpotlightColorName, out var selectedDimColor)
+                ? selectedDimColor
+                : _colors["Gray"];
+
+            _spotlightOverlay.SetSpotlight(spotlightRect, dimColor);
         }
     }
 
@@ -669,6 +673,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         // Reset the settle timer
         _scrollSettleTimer?.Stop();
+        _scrollSettleTimer?.Dispose();
         _scrollSettleTimer = new System.Windows.Forms.Timer { Interval = 100 };
         _scrollSettleTimer.Tick += (_, _) =>
         {
@@ -739,7 +744,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void ExitApp()
     {
         _followTimer.Stop();
+        _followTimer.Dispose();
         _scrollSettleTimer?.Stop();
+        _scrollSettleTimer?.Dispose();
         foreach (var overlay in _screenTintOverlays)
         {
             overlay.Dispose();
