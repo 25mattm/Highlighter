@@ -16,6 +16,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     };
 
     private readonly Dictionary<string, ToolStripMenuItem> _colorMenuItems = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<BarShape, ToolStripMenuItem> _barShapeMenuItems = new();
     private readonly OverlayForm _overlay;
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _followTimer;
@@ -94,6 +95,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
             colorHeader.DropDownItems.Add(item);
         }
 
+        var barShapeHeader = new ToolStripMenuItem("Bar Shape");
+        foreach (var shape in new[] { BarShape.Ruler, BarShape.Line })
+        {
+            var shapeName = shape == BarShape.Ruler ? "Ruler (band)" : "Line (thin)";
+            var item = new ToolStripMenuItem(shapeName);
+            item.Click += (_, _) => SelectBarShape(shape, persist: true);
+            _barShapeMenuItems[shape] = item;
+            barShapeHeader.DropDownItems.Add(item);
+        }
+
         _lockItem.Click += (_, _) => ToggleLock();
         _visibilityItem.Click += (_, _) => ToggleVisibility();
 
@@ -106,6 +117,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(increaseOpacityItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(colorHeader);
+        menu.Items.Add(barShapeHeader);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_lockItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -135,6 +147,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         foreach (var (name, item) in _colorMenuItems)
         {
             item.Checked = name.Equals(_settings.ColorName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        foreach (var (shape, item) in _barShapeMenuItems)
+        {
+            item.Checked = shape == _settings.BarShape;
         }
     }
 
@@ -190,6 +207,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void SelectBarShape(BarShape shape, bool persist)
+    {
+        _settings.BarShape = shape;
+        ApplySettingsToOverlay();
+        if (persist)
+        {
+            SaveSettings();
+        }
+    }
+
     private void ApplySettingsToOverlay()
     {
         var color = _colors.TryGetValue(_settings.ColorName, out var selectedColor)
@@ -197,6 +224,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             : _colors["Yellow"];
 
         _overlay.SetHeightFromFontReference(_settings.FontReferenceSize);
+        _overlay.SetBarShape(_settings.BarShape);
         _overlay.SetAppearance(color, _settings.BarOpacityPercent);
         UpdateLockState();
         _overlay.FollowCursor(Cursor.Position);

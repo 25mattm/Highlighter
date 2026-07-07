@@ -37,6 +37,7 @@ internal sealed class OverlayForm : Form
     public event EventHandler? DisplayChanged;
 
     private int _barHeight = 44;
+    private BarShape _barShape = BarShape.Ruler;
     private Color _barColor = Color.Gold;
     private int _opacityPercent = 35;
     private Point _lastCursorPosition;
@@ -75,6 +76,12 @@ internal sealed class OverlayForm : Form
     public void SetHeightFromFontReference(int fontReferenceSize)
     {
         _barHeight = Math.Clamp(fontReferenceSize * 2, 18, 200);
+    }
+
+    public void SetBarShape(BarShape shape)
+    {
+        _barShape = shape;
+        Invalidate();
     }
 
     public void SetAppearance(Color color, int opacityPercent)
@@ -200,14 +207,23 @@ internal sealed class OverlayForm : Form
         base.OnPaint(e);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
-        // The whole form shares one opacity, so the border is drawn in a darker
-        // shade of the bar color to give the rounded outline visible definition
-        // (mirrors the higher-opacity border on the macOS app).
-        var borderColor = DarkenColor(_barColor, 0.35);
-        var borderRect = new Rectangle(0, 0, Width - 1, Height - 1);
-        using var path = RoundedRectPath(borderRect, CornerRadius);
-        using var pen = new Pen(borderColor, 1.5f);
-        e.Graphics.DrawPath(pen, path);
+        if (_barShape == BarShape.Line)
+        {
+            // For line mode, draw a thin line at the center
+            var lineY = Height / 2;
+            var lineColor = _barColor;
+            using var pen = new Pen(lineColor, 2f);
+            e.Graphics.DrawLine(pen, 0, lineY, Width, lineY);
+        }
+        else
+        {
+            // For ruler mode, draw the full band with a border
+            var borderColor = DarkenColor(_barColor, 0.35);
+            var borderRect = new Rectangle(0, 0, Width - 1, Height - 1);
+            using var path = RoundedRectPath(borderRect, CornerRadius);
+            using var pen = new Pen(borderColor, 1.5f);
+            e.Graphics.DrawPath(pen, path);
+        }
     }
 
     private static GraphicsPath RoundedRectPath(Rectangle rect, int radius)
