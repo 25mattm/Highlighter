@@ -23,9 +23,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _fontLabelItem = new() { Enabled = false };
     private readonly ToolStripMenuItem _opacityLabelItem = new() { Enabled = false };
     private readonly ToolStripMenuItem _visibilityItem = new("Hide Bar (Ctrl+Shift+H)");
+    private readonly ToolStripMenuItem _lockItem = new("Lock Position");
 
     private string? _previewColorName;
     private bool _barHidden;
+    private Point _lockAnchorPoint;
 
     public TrayApplicationContext()
     {
@@ -34,6 +36,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _overlay = new OverlayForm();
         _overlay.ToggleRequested += (_, _) => ToggleVisibility();
+        _overlay.LockToggleRequested += (_, _) => ToggleLock();
+        _overlay.DisplayChanged += (_, _) => OnDisplayChanged();
         ApplySettingsToOverlay();
         _overlay.Show();
 
@@ -49,6 +53,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         InsertValueLabels(menu);
         UpdateMenuLabels();
         UpdateColorChecks();
+        UpdateLockState();
 
         _followTimer = new System.Windows.Forms.Timer { Interval = 16 };
         _followTimer.Tick += (_, _) =>
@@ -87,6 +92,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             colorHeader.DropDownItems.Add(item);
         }
 
+        _lockItem.Click += (_, _) => ToggleLock();
         _visibilityItem.Click += (_, _) => ToggleVisibility();
 
         var quitItem = new ToolStripMenuItem("Quit Highlight Bar", null, (_, _) => ExitApp());
@@ -98,6 +104,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(increaseOpacityItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(colorHeader);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_lockItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_visibilityItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -188,6 +196,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _overlay.SetHeightFromFontReference(_settings.FontReferenceSize);
         _overlay.SetAppearance(color, _settings.BarOpacityPercent);
+        UpdateLockState();
         _overlay.FollowCursor(Cursor.Position);
         UpdateMenuLabels();
         UpdateColorChecks();
@@ -223,6 +232,52 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         _visibilityItem.Text = _barHidden ? "Show Bar (Ctrl+Shift+H)" : "Hide Bar (Ctrl+Shift+H)";
+    }
+
+    private void ToggleLock()
+    {
+        _settings.IsLocked = !_settings.IsLocked;
+
+        if (_settings.IsLocked)
+        {
+            // Lock at current cursor position
+            _lockAnchorPoint = Cursor.Position;
+            _settings.LockedAnchorX = _lockAnchorPoint.X;
+            _settings.LockedAnchorY = _lockAnchorPoint.Y;
+        }
+        else
+        {
+            // Unlock and clear the anchor
+            _settings.LockedAnchorX = null;
+            _settings.LockedAnchorY = null;
+        }
+
+        UpdateLockState();
+        SaveSettings();
+    }
+
+    private void UpdateLockState()
+    {
+        _lockItem.Checked = _settings.IsLocked;
+        _lockItem.Text = _settings.IsLocked ? "Unlock Position (Ctrl+Shift+L)" : "Lock Position (Ctrl+Shift+L)";
+
+        // Apply lock state to overlay
+        Point? lockedPos = null;
+        if (_settings.IsLocked && _settings.LockedAnchorX.HasValue && _settings.LockedAnchorY.HasValue)
+        {
+            lockedPos = new Point((int)_settings.LockedAnchorX.Value, (int)_settings.LockedAnchorY.Value);
+        }
+
+        _overlay.SetLockedPosition(_settings.IsLocked, lockedPos);
+    }
+
+    private void OnDisplayChanged()
+    {
+        // Re-apply overlay positioning when display configuration changes
+        if (!_barHidden)
+        {
+            _overlay.FollowCursor(Cursor.Position);
+        }
     }
 
     private void ExitApp()

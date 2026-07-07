@@ -9,15 +9,16 @@ internal sealed class OverlayForm : Form
 {
     private const int CornerRadius = 10;
 
-    // System-wide Ctrl+Shift+H shortcut to show/hide the bar. RegisterHotKey
-    // needs no special permission and posts WM_HOTKEY to this window.
+    // System-wide hotkeys
     private const int ToggleHotKeyId = 1;
+    private const int LockHotKeyId = 2;
     private const int WmHotKey = 0x0312;
     private const int WmDisplayChange = 0x007E;
     private const uint ModControl = 0x0002;
     private const uint ModShift = 0x0004;
     private const uint ModNoRepeat = 0x4000;
     private const uint VkH = 0x48;
+    private const uint VkL = 0x4C;
 
     [DllImport("user32.dll")]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -26,6 +27,7 @@ internal sealed class OverlayForm : Form
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     public event EventHandler? ToggleRequested;
+    public event EventHandler? LockToggleRequested;
     public event EventHandler? DisplayChanged;
 
     private int _barHeight = 44;
@@ -119,20 +121,32 @@ internal sealed class OverlayForm : Form
     {
         base.OnHandleCreated(e);
         RegisterHotKey(Handle, ToggleHotKeyId, ModControl | ModShift | ModNoRepeat, VkH);
+        RegisterHotKey(Handle, LockHotKeyId, ModControl | ModShift | ModNoRepeat, VkL);
     }
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
         UnregisterHotKey(Handle, ToggleHotKeyId);
+        UnregisterHotKey(Handle, LockHotKeyId);
         base.OnHandleDestroyed(e);
     }
 
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == WmHotKey && m.WParam.ToInt32() == ToggleHotKeyId)
+        if (m.Msg == WmHotKey)
         {
-            ToggleRequested?.Invoke(this, EventArgs.Empty);
-            return;
+            var hotKeyId = m.WParam.ToInt32();
+            if (hotKeyId == ToggleHotKeyId)
+            {
+                ToggleRequested?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
+            if (hotKeyId == LockHotKeyId)
+            {
+                LockToggleRequested?.Invoke(this, EventArgs.Empty);
+                return;
+            }
         }
 
         if (m.Msg == WmDisplayChange)
