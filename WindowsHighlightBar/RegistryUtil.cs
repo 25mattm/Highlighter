@@ -50,13 +50,12 @@ public static class RegistryUtil
 
                 if (enabled)
                 {
-                    // Get the path to the current executable
-                    var exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                    var exePath = Environment.ProcessPath ?? System.Windows.Forms.Application.ExecutablePath;
                     key.SetValue(AppName, exePath);
                 }
                 else
                 {
-                    key.DeleteValue(AppName, throwOnMissing: false);
+                    key.DeleteValue(AppName, false);
                 }
 
                 return true;

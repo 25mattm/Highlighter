@@ -46,7 +46,7 @@ public enum TrackingSource
 /// Note: Opacity is stored as a percentage (10-90) for the Windows UI,
 /// but serialized as a double (0.1-0.9) for JSON compatibility with macOS.
 /// </summary>
-internal sealed class AppSettings
+public sealed class AppSettings
 {
     // Basic appearance (shared baseline)
     public int FontReferenceSize { get; set; } = 22;

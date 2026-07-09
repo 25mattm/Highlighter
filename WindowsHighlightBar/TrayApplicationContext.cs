@@ -661,7 +661,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         // Accumulate scroll delta (each notch is 120)
-        _scrollAccumulation += e.Delta;
+        _scrollAccumulation += e.NewValue;
 
         // Convert scroll accumulation to pixels (roughly 20 pixels per notch)
         var barPosition = new Point(
