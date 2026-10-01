@@ -1,20 +1,18 @@
 # Highlight Bar (macOS + Windows)
 
-A lightweight click-through reading bar that follows your mouse across screens and
-stays on top of every window, so you can track the line you are reading. Two native
-apps share the same feature set:
+Highlight Bar is a cross-platform, click-through reading guide that follows your
+cursor across screens and stays on top of other windows, helping readers keep their
+place without interrupting workflow. Two native apps share the same feature set:
 
 - `HighlightBar/` — macOS Swift menu-bar app
 - `WindowsHighlightBar/` — Windows C# WinForms app
 
 ## Accessibility
 
-Highlight Bar is a digital reading guide. Many people who read more comfortably with
-a physical reading ruler or line guide — including readers with dyslexia, visual
-tracking difficulties, ADHD, or low vision — lose their place when moving between
-lines or across a wide screen. The bar gives a consistent, adjustable visual anchor
-that follows the cursor, while staying fully click-through so it never interrupts
-normal work.
+Highlight Bar supports readers who use a physical reading ruler or line guide,
+including people with dyslexia, visual tracking difficulties, ADHD, or low vision.
+Its adjustable visual anchor follows the cursor and stays fully click-through,
+helping readers keep their place without interrupting other tasks.
 
 Accessibility-minded design choices:
 
@@ -27,7 +25,7 @@ Accessibility-minded design choices:
 
 ## Features
 
-Both platforms implement the same behaviour:
+Both platforms share the same core behavior:
 
 | Feature | macOS | Windows |
 | --- | --- | --- |
@@ -44,7 +42,7 @@ Both platforms implement the same behaviour:
 The control surface is platform-idiomatic: macOS uses in-menu sliders and a color
 swatch row; Windows uses tray context-menu items and a color submenu.
 
-## Downloads for friends
+## Downloads
 
 - Windows: from the artifact in **Build Windows App** or from GitHub Releases (`HighlightBar-windows-x64.zip`).
 - macOS: from the artifact in **Build macOS App** or from GitHub Releases (`HighlightBar-macos.zip`).
