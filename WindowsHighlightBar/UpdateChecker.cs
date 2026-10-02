@@ -11,8 +11,8 @@ namespace HighlightBar.Windows;
 /// </summary>
 public sealed class UpdateChecker
 {
-    private const string GitHubApiUrl = "https://api.github.com/repos/matthewmullett/Highlighter/releases/latest";
-    private const string CurrentVersion = "1.0.0";  // Should match app version
+    private const string GitHubApiUrl = "https://api.github.com/repos/25mattm/Highlighter/releases/latest";
+    private const string CurrentVersion = "1.0.1";  // Should match app version
     private static readonly HttpClient _httpClient = new()
     {
         DefaultRequestHeaders =

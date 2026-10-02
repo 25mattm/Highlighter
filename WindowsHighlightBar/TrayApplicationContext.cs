@@ -30,6 +30,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _visibilityItem = new("Hide Bar (Ctrl+Shift+H)");
     private readonly ToolStripMenuItem _lockItem = new("Lock Position");
     private readonly ToolStripMenuItem _startupItem = new("Launch at startup");
+    private TrackBar? _fontTrackBar;
+    private bool _syncingMenuControls;
 
     private string? _previewColorName;
     private bool _barHidden;
@@ -66,7 +68,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Visible = true
         };
 
-        InsertValueLabels(menu);
         UpdateMenuLabels();
         UpdateColorChecks();
         UpdateLockState();
@@ -146,8 +147,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         menu.Closing += (_, _) => ClearPreviewColor();
 
-        var decreaseFontItem = new ToolStripMenuItem("Smaller Font Reference (-1)", null, (_, _) => ChangeFontReference(-1));
-        var increaseFontItem = new ToolStripMenuItem("Larger Font Reference (+1)", null, (_, _) => ChangeFontReference(1));
+        var fontSliderItem = CreateFontSliderItem();
 
         var decreaseOpacityItem = new ToolStripMenuItem("More Transparent (-5%)", null, (_, _) => ChangeOpacity(-5));
         var increaseOpacityItem = new ToolStripMenuItem("More Solid (+5%)", null, (_, _) => ChangeOpacity(5));
@@ -210,8 +210,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         var quitItem = new ToolStripMenuItem("Quit Highlight Bar", null, (_, _) => ExitApp());
 
-        menu.Items.Add(decreaseFontItem);
-        menu.Items.Add(increaseFontItem);
+        menu.Items.Add(_fontLabelItem);
+        menu.Items.Add(fontSliderItem);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_opacityLabelItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(decreaseOpacityItem);
         menu.Items.Add(increaseOpacityItem);
@@ -232,18 +234,51 @@ internal sealed class TrayApplicationContext : ApplicationContext
         return menu;
     }
 
-    private void InsertValueLabels(ContextMenuStrip menu)
+    private ToolStripControlHost CreateFontSliderItem()
     {
-        menu.Items.Insert(0, _fontLabelItem);
-        menu.Items.Insert(1, new ToolStripSeparator());
-        menu.Items.Insert(5, _opacityLabelItem);
-        menu.Items.Insert(6, new ToolStripSeparator());
+        _fontTrackBar = new TrackBar
+        {
+            AutoSize = false,
+            Minimum = 10,
+            Maximum = 100,
+            SmallChange = 1,
+            LargeChange = 5,
+            TickFrequency = 10,
+            Value = _settings.FontReferenceSize,
+            Width = 190,
+            Height = 34
+        };
+
+        _fontTrackBar.ValueChanged += (_, _) =>
+        {
+            if (_syncingMenuControls)
+            {
+                return;
+            }
+
+            SetFontReference(_fontTrackBar.Value);
+        };
+
+        return new ToolStripControlHost(_fontTrackBar)
+        {
+            AutoSize = false,
+            Width = 210,
+            Height = 38,
+            Margin = new Padding(8, 0, 8, 4)
+        };
     }
 
     private void UpdateMenuLabels()
     {
         _fontLabelItem.Text = $"Height: {_settings.FontReferenceSize * 2}px ({_settings.FontReferenceSize}pt reference)";
         _opacityLabelItem.Text = $"Opacity: {_settings.BarOpacityPercent}% ({100 - _settings.BarOpacityPercent}% transparent)";
+
+        if (_fontTrackBar is not null && _fontTrackBar.Value != _settings.FontReferenceSize)
+        {
+            _syncingMenuControls = true;
+            _fontTrackBar.Value = _settings.FontReferenceSize;
+            _syncingMenuControls = false;
+        }
     }
 
     private void UpdateColorChecks()
@@ -278,9 +313,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private void ChangeFontReference(int delta)
+    private void SetFontReference(int value)
     {
-        _settings.FontReferenceSize = Math.Clamp(_settings.FontReferenceSize + delta, 10, 100);
+        _settings.FontReferenceSize = Math.Clamp(value, 10, 100);
         ApplySettingsToOverlay();
         SaveSettings();
     }
