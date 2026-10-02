@@ -26,6 +26,8 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Build app bundle
+        env:
+          HB_DIST_DIR: ${{ github.workspace }}/HighlightBar/dist
         run: ./HighlightBar/scripts/build-app.sh
 
       - name: Zip app bundle
